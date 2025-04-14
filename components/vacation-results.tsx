@@ -422,35 +422,35 @@ export default function VacationResults({ plan }: VacationResultsProps) {
         <div className="relative z-10 p-6">
           <div className="space-y-6">
             <h2 className="text-2xl font-semibold leading-none tracking-tight mb-4 text-primary">
-              Your Optimal Vacation Plan Summary
+              Your Personalized Vacation Plan
             </h2>
             {/* Summary Statistics Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <StatCard
-                label="Planned Days Used (Budget)"
+                label="Vacation Days Used (Planned)"
                 value={optimizedVacationDaysCost}
-                description={`Budget: ${optimizerBudget}`}
+                description={`From your budget: ${optimizerBudget}`}
               />
               <StatCard
-                label="Remaining Budget Days"
+                label="Vacation Days Left"
                 value={remainingVacationDays}
               />
               {companyVacationDaysCost > 0 && (
                 <StatCard
-                  label="Company Vacation Cost"
+                  label="Company-Mandated Days"
                   value={companyVacationDaysCost}
                 />
               )}
               <StatCard
-                label="Total Vacation Cost"
+                label="Total Vacation Days Used"
                 value={totalVacationDaysUsed}
-                description="Planned + Company"
+                description="Planned + Company Days"
               />
               <StatCard label="Total Days Off" value={totalDaysOff} />
               <StatCard
-                label="Efficiency Ratio (Planned)"
+                label="Time Off per Vacation Day"
                 value={efficiency.toFixed(2)}
-                description="Days off per planned day"
+                description="Days off per vacation day used"
               />
             </div>
 
@@ -459,7 +459,7 @@ export default function VacationResults({ plan }: VacationResultsProps) {
             {/* Vacation Periods Section */}
             <div>
               <h3 className="text-xl font-semibold mb-4 text-primary">
-                Vacation Periods
+                Your Vacation Periods
               </h3>
               <Tabs defaultValue={monthsWithVacations[0]?.toString() || "all"}>
                 <TabsList className="mb-4 flex flex-wrap h-auto justify-start bg-secondary/10">
@@ -485,7 +485,7 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                 <TabsContent value="all">
                   <div className="space-y-4">
                     <h3 className="text-lg font-medium mb-4">
-                      All Vacation Periods
+                      All Planned Vacation Periods
                     </h3>
                     <div className="rounded-md border">
                       <Table>

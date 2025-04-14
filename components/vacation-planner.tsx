@@ -200,7 +200,7 @@ export default function VacationPlanner() {
       } catch (error) {
         console.error("Failed to fetch available countries:", error);
         setFetchCountriesError(
-          "Could not load country list. Please try refreshing the page."
+          "Couldn't load the list of countries. Please refresh the page and try again."
         );
       }
       setIsFetchingCountries(false);
@@ -246,7 +246,9 @@ export default function VacationPlanner() {
           console.log(`Found ${subdivisions.length} subdivisions.`);
         } catch (error) {
           console.error("Failed to fetch holidays/subdivisions:", error);
-          setFetchHolidaysError("Could not load holiday or subdivision data.");
+          setFetchHolidaysError(
+            "Couldn't load holiday or region data. Please try again later."
+          );
         }
         setIsFetchingHolidays(false);
       }
@@ -519,9 +521,9 @@ export default function VacationPlanner() {
     } catch (error) {
       console.error("Error during vacation plan calculation:", error);
       setCalculationError(
-        `Calculation failed: ${
+        `Sorry, something went wrong with the calculation: ${
           error instanceof Error ? error.message : "Unknown error"
-        }. Please check console for details.`
+        }. Please try again.`
       );
     }
 
@@ -545,7 +547,7 @@ export default function VacationPlanner() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5 pointer-events-none"></div>
         <div className="relative z-10">
           <h2 className="text-2xl font-semibold leading-none tracking-tight mb-4 text-primary">
-            Configure Your Vacation Plan
+            Plan Your Perfect Vacation
           </h2>
 
           {fetchCountriesError && (
@@ -569,7 +571,7 @@ export default function VacationPlanner() {
                 htmlFor="remaining-days"
                 className="text-secondary-foreground"
               >
-                Vacation Budget
+                Available Vacation Days
               </Label>
               <Input
                 id="remaining-days"
@@ -585,7 +587,7 @@ export default function VacationPlanner() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="year" className="text-secondary-foreground">
-                Year
+                Planning Year
               </Label>
               <Input
                 id="year"
@@ -601,7 +603,7 @@ export default function VacationPlanner() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="country" className="text-secondary-foreground">
-                Country
+                Select Country
               </Label>
               <Select
                 value={selectedCountryCode}
@@ -638,7 +640,7 @@ export default function VacationPlanner() {
                   htmlFor="subdivision"
                   className="text-secondary-foreground"
                 >
-                  Region / State
+                  Select Region or State
                 </Label>
                 <Select
                   value={selectedSubdivisionCode || ""} // Handle null value
@@ -653,7 +655,7 @@ export default function VacationPlanner() {
                     id="subdivision"
                     className="border-primary/20 focus:border-primary"
                   >
-                    <SelectValue placeholder="Select region/state..." />
+                    <SelectValue placeholder="Choose a region or state (if applicable)" />
                   </SelectTrigger>
                   <SelectContent>
                     {isFetchingHolidays ? (
@@ -684,7 +686,7 @@ export default function VacationPlanner() {
           {/* Start Date Selector - Updated Calendar Styling */}
           <div className="pt-2">
             <Label htmlFor="start-date" className="text-secondary-foreground">
-              Optimization Start Date (Optional)
+              Start Date (Optional)
             </Label>
             <Popover
               open={isStartCalendarOpen}
@@ -765,8 +767,7 @@ export default function VacationPlanner() {
               </PopoverContent>
             </Popover>
             <p className="text-sm text-muted-foreground mt-1">
-              The optimizer will only consider vacation periods starting on or
-              after this date.
+              Only consider vacation periods beginning on or after this date.
             </p>
           </div>
 
@@ -778,19 +779,19 @@ export default function VacationPlanner() {
                 value="workdays"
                 className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
               >
-                Workdays
+                Your Workdays
               </TabsTrigger>
               <TabsTrigger
                 value="remote"
                 className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
               >
-                Remote Work
+                Remote Workdays
               </TabsTrigger>
               <TabsTrigger
                 value="company"
                 className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
               >
-                Company Vacation
+                Company-Mandated Vacation
               </TabsTrigger>
             </TabsList>
 
@@ -798,7 +799,7 @@ export default function VacationPlanner() {
             <TabsContent value="workdays" className="pt-4">
               <div className="space-y-4">
                 <Label className="text-base font-medium text-secondary">
-                  Select your regular working days
+                  Which days do you usually work?
                 </Label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
                   {Object.entries(workdays).map(([day, checked]) => (
@@ -841,10 +842,11 @@ export default function VacationPlanner() {
                         htmlFor="consider-remote"
                         className="font-medium text-secondary"
                       >
-                        Consider remote work days during planning
+                        Include remote workdays in planning
                       </Label>
                       <p className="text-sm text-muted-foreground">
-                        Prioritize vacation on non-remote workdays.
+                        We&rsquo;ll prioritize vacation on days you can&rsquo;t
+                        work remotely.
                       </p>
                     </div>
                   </div>
@@ -854,10 +856,10 @@ export default function VacationPlanner() {
 
                 <div className="space-y-4">
                   <Label className="text-base font-medium text-secondary">
-                    Select your remote workdays
+                    Which workdays can you work remotely?
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Only applicable if the day is also selected as a workday.
+                    (Remote workdays must also be selected as regular workdays.)
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
                     {Object.entries(remoteWorkdays).map(([day, checked]) => (
@@ -893,11 +895,11 @@ export default function VacationPlanner() {
               <div className="space-y-6">
                 <div>
                   <h3 className="text-base font-medium text-secondary">
-                    Mandatory Company Vacation
+                    Company-Mandated Vacation Days
                   </h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Add company-mandated vacation days. These will be deducted
-                    first and included in the plan.
+                    Add any days your company requires you to take off. These
+                    will be prioritized in your plan.
                   </p>
                 </div>
 
@@ -913,7 +915,7 @@ export default function VacationPlanner() {
                       <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
                       {selectedCompanyDate
                         ? format(selectedCompanyDate, "PPP")
-                        : "Add Company Vacation Day"}
+                        : "Add a Company Vacation Day"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-4 space-y-4 border-primary/20">
@@ -960,7 +962,7 @@ export default function VacationPlanner() {
                         htmlFor="company-vacation-duration"
                         className="text-secondary-foreground"
                       >
-                        Duration
+                        Select Duration
                       </Label>
                       <div className="grid grid-cols-2 gap-2">
                         <Button
@@ -969,7 +971,7 @@ export default function VacationPlanner() {
                           variant="outline"
                           className="border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
                         >
-                          Add Half Day
+                          Add ½ Day
                         </Button>
                         <Button
                           onClick={() => addCompanyVacationDay(1)}
@@ -986,7 +988,7 @@ export default function VacationPlanner() {
                 {companyVacationDays.length > 0 && (
                   <div className="space-y-2">
                     <Label className="text-base font-medium text-secondary">
-                      Added Days
+                      Company Vacation Days
                     </Label>
                     <div className="rounded-lg border border-primary/10 overflow-hidden">
                       <Table>
@@ -1051,7 +1053,10 @@ export default function VacationPlanner() {
           {calculationError && (
             <Alert variant="destructive" className="my-4">
               <AlertTitle>Calculation Error</AlertTitle>
-              <AlertDescription>{calculationError}</AlertDescription>
+              <AlertDescription>
+                Sorry, something went wrong with the calculation:{" "}
+                {calculationError}. Please try again.
+              </AlertDescription>
             </Alert>
           )}
 
@@ -1074,7 +1079,7 @@ export default function VacationPlanner() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculating...
               </>
             ) : (
-              "Calculate Optimal Vacation Plan"
+              "Find My Best Vacation Plan"
             )}
           </Button>
         </div>

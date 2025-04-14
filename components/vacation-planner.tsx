@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,8 @@ import { CalendarIcon, Trash2 } from "lucide-react";
 import { SelectSingleEventHandler } from "react-day-picker";
 import { cn } from "@/lib/utils";
 
+const LOCAL_STORAGE_KEY = "vacationPlannerState";
+
 // Helper function to get YYYY-MM-DD string based on LOCAL date components
 function getLocalISODateString(date: Date): string {
   if (!(date instanceof Date) || isNaN(date.getTime())) {
@@ -69,6 +71,9 @@ type DayKey = keyof WorkdayState;
 
 export default function VacationPlanner() {
   const currentYear = new Date().getFullYear();
+
+  // --- State Initialization with Defaults ---
+  // We'll initialize with defaults, then override with localStorage if available
   const [remainingDays, setRemainingDays] = useState<number>(14);
   const [selectedState, setSelectedState] =
     useState<string>("baden-wurttemberg");
@@ -98,8 +103,68 @@ export default function VacationPlanner() {
     CompanyVacationDay[]
   >([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [selectedDuration, setSelectedDuration] = useState<string>("1");
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+  // --- Load State from localStorage on Mount ---
+  useEffect(() => {
+    try {
+      const savedState = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (savedState) {
+        const parsedState = JSON.parse(savedState);
+        // Validate and set each piece of state
+        if (typeof parsedState.remainingDays === "number")
+          setRemainingDays(parsedState.remainingDays);
+        if (typeof parsedState.selectedState === "string")
+          setSelectedState(parsedState.selectedState);
+        if (
+          typeof parsedState.workdays === "object" &&
+          parsedState.workdays !== null
+        )
+          setWorkdays(parsedState.workdays);
+        if (
+          typeof parsedState.remoteWorkdays === "object" &&
+          parsedState.remoteWorkdays !== null
+        )
+          setRemoteWorkdays(parsedState.remoteWorkdays);
+        if (typeof parsedState.year === "number") setYear(parsedState.year);
+        if (typeof parsedState.considerRemoteWork === "boolean")
+          setConsiderRemoteWork(parsedState.considerRemoteWork);
+        if (Array.isArray(parsedState.companyVacationDays))
+          setCompanyVacationDays(parsedState.companyVacationDays);
+      }
+    } catch (error) {
+      console.error("Failed to load state from localStorage:", error);
+      // Optionally clear corrupted storage
+      // localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  }, []); // Empty dependency array ensures this runs only once on mount
+
+  // --- Save State to localStorage on Change ---
+  useEffect(() => {
+    try {
+      const stateToSave = {
+        remainingDays,
+        selectedState,
+        workdays,
+        remoteWorkdays,
+        year,
+        considerRemoteWork,
+        companyVacationDays,
+      };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+    } catch (error) {
+      console.error("Failed to save state to localStorage:", error);
+    }
+  }, [
+    // Dependencies: save whenever any of these change
+    remainingDays,
+    selectedState,
+    workdays,
+    remoteWorkdays,
+    year,
+    considerRemoteWork,
+    companyVacationDays,
+  ]);
 
   const handleWorkdayChange = (day: DayKey) => {
     setWorkdays((prev) => ({
@@ -126,7 +191,7 @@ export default function VacationPlanner() {
     }
   };
 
-  const addCompanyVacationDay = () => {
+  const addCompanyVacationDay = (duration: number) => {
     if (!selectedDate) return;
 
     // Format the date to YYYY-MM-DD string using local date components
@@ -140,11 +205,10 @@ export default function VacationPlanner() {
         ...companyVacationDays,
         {
           date: dateStr,
-          duration: Number.parseFloat(selectedDuration),
+          duration: duration,
         },
       ]);
       setSelectedDate(undefined);
-      setIsCalendarOpen(false); // Close popover after adding
     }
   };
 
@@ -383,29 +447,26 @@ export default function VacationPlanner() {
                     onSelect={setSelectedDate as SelectSingleEventHandler}
                     disabled={dateFilter}
                     initialFocus
+                    fixedWeeks
                   />
                   <div className="space-y-2">
                     <Label htmlFor="company-vacation-duration">Duration</Label>
-                    <Select
-                      value={selectedDuration}
-                      onValueChange={setSelectedDuration}
-                    >
-                      <SelectTrigger id="company-vacation-duration">
-                        <SelectValue placeholder="Duration" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0.5">Half day (0.5)</SelectItem>
-                        <SelectItem value="1">Full day (1.0)</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        onClick={() => addCompanyVacationDay(0.5)}
+                        disabled={!selectedDate}
+                        variant="outline"
+                      >
+                        Add Half Day
+                      </Button>
+                      <Button
+                        onClick={() => addCompanyVacationDay(1)}
+                        disabled={!selectedDate}
+                      >
+                        Add Full Day
+                      </Button>
+                    </div>
                   </div>
-                  <Button
-                    onClick={addCompanyVacationDay}
-                    disabled={!selectedDate}
-                    className="w-full"
-                  >
-                    Add Day
-                  </Button>
                 </PopoverContent>
               </Popover>
 

@@ -96,8 +96,13 @@ function StatCard({
   className?: string;
 }) {
   return (
-    <Card className={cn("p-4", className)}>
-      <div className="text-sm font-medium text-muted-foreground">{label}</div>
+    <Card
+      className={cn(
+        "p-4 border-primary/20 hover:border-primary/30 transition-colors",
+        className
+      )}
+    >
+      <div className="text-sm font-medium text-primary/80">{label}</div>
       <div className="text-2xl font-bold mt-1">{value}</div>
       {description && (
         <div className="text-xs text-muted-foreground mt-0.5">
@@ -408,296 +413,325 @@ export default function VacationResults({ plan }: VacationResultsProps) {
 
   return (
     <div className="space-y-8">
-      {/* Results Summary Section */}
-      <div className="space-y-6 rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-        <h2 className="text-2xl font-semibold leading-none tracking-tight mb-4">
-          Your Optimal Vacation Plan Summary
-        </h2>
-        {/* Summary Statistics Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <StatCard
-            label="Planned Days Used (Budget)"
-            value={optimizedVacationDaysCost}
-            description={`Budget: ${optimizerBudget}`}
-          />
-          <StatCard
-            label="Remaining Budget Days"
-            value={remainingVacationDays}
-          />
-          {companyVacationDaysCost > 0 && (
-            <StatCard
-              label="Company Vacation Cost"
-              value={companyVacationDaysCost}
-            />
-          )}
-          <StatCard
-            label="Total Vacation Cost"
-            value={totalVacationDaysUsed}
-            description="Planned + Company"
-          />
-          <StatCard label="Total Days Off" value={totalDaysOff} />
-          <StatCard
-            label="Efficiency Ratio (Planned)"
-            value={efficiency.toFixed(2)}
-            description="Days off per planned day"
-          />
-        </div>
+      {/* Results Summary Section - restructured container */}
+      <div className="rounded-lg border border-primary/10 bg-card text-card-foreground shadow-sm relative overflow-hidden">
+        {/* Remove the gradient div from inside and place it directly inside the card */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5 pointer-events-none"></div>
 
-        <Separator />
+        {/* All content with padding in a separate div */}
+        <div className="relative z-10 p-6">
+          <div className="space-y-6">
+            <h2 className="text-2xl font-semibold leading-none tracking-tight mb-4 text-primary">
+              Your Optimal Vacation Plan Summary
+            </h2>
+            {/* Summary Statistics Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <StatCard
+                label="Planned Days Used (Budget)"
+                value={optimizedVacationDaysCost}
+                description={`Budget: ${optimizerBudget}`}
+              />
+              <StatCard
+                label="Remaining Budget Days"
+                value={remainingVacationDays}
+              />
+              {companyVacationDaysCost > 0 && (
+                <StatCard
+                  label="Company Vacation Cost"
+                  value={companyVacationDaysCost}
+                />
+              )}
+              <StatCard
+                label="Total Vacation Cost"
+                value={totalVacationDaysUsed}
+                description="Planned + Company"
+              />
+              <StatCard label="Total Days Off" value={totalDaysOff} />
+              <StatCard
+                label="Efficiency Ratio (Planned)"
+                value={efficiency.toFixed(2)}
+                description="Days off per planned day"
+              />
+            </div>
 
-        {/* Vacation Periods Section */}
-        <div>
-          <h3 className="text-xl font-semibold mb-4">Vacation Periods</h3>
-          <Tabs defaultValue={monthsWithVacations[0]?.toString() || "all"}>
-            <TabsList className="mb-4 flex flex-wrap h-auto justify-start">
-              <TabsTrigger value="all">All Periods</TabsTrigger>
-              {monthsWithVacations.map((month) => (
-                <TabsTrigger key={month} value={month.toString()}>
-                  {new Date(0, month).toLocaleString("default", {
-                    month: "long",
-                  })}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <Separator className="my-6 bg-primary/10" />
 
-            <TabsContent value="all">
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium mb-4">
-                  All Vacation Periods
-                </h3>
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort("startDate")}
-                        >
-                          {/* Wrap text and icon for flex alignment */}
-                          <div className="flex items-center">
-                            Start Date
-                            {getSortIcon("startDate")}
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort("endDate")}
-                        >
-                          {/* Wrap text and icon for flex alignment */}
-                          <div className="flex items-center">
-                            End Date
-                            {getSortIcon("endDate")}
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer hover:bg-muted/50 text-right"
-                          onClick={() => requestSort("totalDays")}
-                        >
-                          {/* Wrap text and icon for flex alignment (justify-end for right align) */}
-                          <div className="flex items-center justify-end">
-                            Days Off
-                            {getSortIcon("totalDays")}
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer hover:bg-muted/50 text-right"
-                          onClick={() => requestSort("vacationDaysUsed")}
-                        >
-                          {/* Wrap text and icon for flex alignment (justify-end for right align) */}
-                          <div className="flex items-center justify-end">
-                            Vacation Days
-                            {getSortIcon("vacationDaysUsed")}
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer hover:bg-muted/50 text-right"
-                          onClick={() => requestSort("efficiency")}
-                        >
-                          {/* Wrap text and icon for flex alignment (justify-end for right align) */}
-                          <div className="flex items-center justify-end">
-                            Efficiency
-                            {getSortIcon("efficiency")}
-                          </div>
-                        </TableHead>
-                        <TableHead>Includes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortedVacationPeriods.length > 0 ? (
-                        sortedVacationPeriods.map((period, index) => {
-                          const efficiency =
-                            period.vacationDaysUsed > 0
-                              ? period.totalDays / period.vacationDaysUsed
-                              : 0;
-                          return (
-                            <TableRow key={index}>
-                              <TableCell className="font-medium">
-                                {format(
-                                  new Date(period.startDate),
-                                  "MMM d, yyyy"
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {format(
-                                  new Date(period.endDate),
-                                  "MMM d, yyyy"
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {period.totalDays}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {period.vacationDaysUsed}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {efficiency.toFixed(2)}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-1">
-                                  {period.includes.map((item, i) => (
-                                    <Badge
-                                      key={i}
-                                      variant="secondary"
-                                      className={cn(
-                                        "font-normal text-xs px-1.5 py-0.5", // Smaller badge
-                                        item.type === "holiday" &&
-                                          "bg-red-100 text-red-900 border-red-200",
-                                        item.type === "company" &&
-                                          "bg-purple-100 text-purple-900 border-purple-200",
-                                        item.type === "weekend" &&
-                                          "bg-gray-100 text-gray-800 border-gray-200"
+            {/* Vacation Periods Section */}
+            <div>
+              <h3 className="text-xl font-semibold mb-4 text-primary">
+                Vacation Periods
+              </h3>
+              <Tabs defaultValue={monthsWithVacations[0]?.toString() || "all"}>
+                <TabsList className="mb-4 flex flex-wrap h-auto justify-start bg-secondary/10">
+                  <TabsTrigger
+                    value="all"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  >
+                    All Periods
+                  </TabsTrigger>
+                  {monthsWithVacations.map((month) => (
+                    <TabsTrigger
+                      key={month}
+                      value={month.toString()}
+                      className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      {new Date(0, month).toLocaleString("default", {
+                        month: "long",
+                      })}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+
+                <TabsContent value="all">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium mb-4">
+                      All Vacation Periods
+                    </h3>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort("startDate")}
+                            >
+                              {/* Wrap text and icon for flex alignment */}
+                              <div className="flex items-center">
+                                Start Date
+                                {getSortIcon("startDate")}
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort("endDate")}
+                            >
+                              {/* Wrap text and icon for flex alignment */}
+                              <div className="flex items-center">
+                                End Date
+                                {getSortIcon("endDate")}
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50 text-right"
+                              onClick={() => requestSort("totalDays")}
+                            >
+                              {/* Wrap text and icon for flex alignment (justify-end for right align) */}
+                              <div className="flex items-center justify-end">
+                                Days Off
+                                {getSortIcon("totalDays")}
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50 text-right"
+                              onClick={() => requestSort("vacationDaysUsed")}
+                            >
+                              {/* Wrap text and icon for flex alignment (justify-end for right align) */}
+                              <div className="flex items-center justify-end">
+                                Vacation Days
+                                {getSortIcon("vacationDaysUsed")}
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50 text-right"
+                              onClick={() => requestSort("efficiency")}
+                            >
+                              {/* Wrap text and icon for flex alignment (justify-end for right align) */}
+                              <div className="flex items-center justify-end">
+                                Efficiency
+                                {getSortIcon("efficiency")}
+                              </div>
+                            </TableHead>
+                            <TableHead>Includes</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedVacationPeriods.length > 0 ? (
+                            sortedVacationPeriods.map((period, index) => {
+                              const efficiency =
+                                period.vacationDaysUsed > 0
+                                  ? period.totalDays / period.vacationDaysUsed
+                                  : 0;
+                              return (
+                                <TableRow key={index}>
+                                  <TableCell className="font-medium">
+                                    {format(
+                                      new Date(period.startDate),
+                                      "MMM d, yyyy"
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {format(
+                                      new Date(period.endDate),
+                                      "MMM d, yyyy"
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {period.totalDays}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {period.vacationDaysUsed}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {efficiency.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-wrap gap-1">
+                                      {period.includes.map((item, i) => (
+                                        <Badge
+                                          key={i}
+                                          variant="secondary"
+                                          className={cn(
+                                            "font-normal text-xs px-1.5 py-0.5", // Smaller badge
+                                            item.type === "holiday" &&
+                                              "bg-red-100 text-red-900 border-red-200",
+                                            item.type === "company" &&
+                                              "bg-purple-100 text-purple-900 border-purple-200",
+                                            item.type === "weekend" &&
+                                              "bg-gray-100 text-gray-800 border-gray-200"
+                                          )}
+                                          title={
+                                            item.type === "holiday"
+                                              ? item.name
+                                              : item.type
+                                          } // Tooltip for name/type
+                                        >
+                                          {item.type === "holiday" && (
+                                            <CalendarDays className="h-2.5 w-2.5 mr-0.5" />
+                                          )}
+                                          {item.type === "company" && (
+                                            <Building className="h-2.5 w-2.5 mr-0.5" />
+                                          )}
+                                          {item.type === "weekend"
+                                            ? "W/E"
+                                            : item.type === "holiday"
+                                            ? "Hol"
+                                            : "Comp"}
+                                        </Badge>
+                                      ))}
+                                      {period.isCompanyVacation && (
+                                        <Badge
+                                          variant="outline"
+                                          className="bg-purple-100 text-purple-900 border-purple-200 text-xs px-1.5 py-0.5"
+                                          title="Company Designated Vacation"
+                                        >
+                                          <Building className="h-2.5 w-2.5 mr-0.5" />{" "}
+                                          Comp
+                                        </Badge>
                                       )}
-                                      title={
-                                        item.type === "holiday"
-                                          ? item.name
-                                          : item.type
-                                      } // Tooltip for name/type
-                                    >
-                                      {item.type === "holiday" && (
-                                        <CalendarDays className="h-2.5 w-2.5 mr-0.5" />
-                                      )}
-                                      {item.type === "company" && (
-                                        <Building className="h-2.5 w-2.5 mr-0.5" />
-                                      )}
-                                      {item.type === "weekend"
-                                        ? "W/E"
-                                        : item.type === "holiday"
-                                        ? "Hol"
-                                        : "Comp"}
-                                    </Badge>
-                                  ))}
-                                  {period.isCompanyVacation && (
-                                    <Badge
-                                      variant="outline"
-                                      className="bg-purple-100 text-purple-900 border-purple-200 text-xs px-1.5 py-0.5"
-                                      title="Company Designated Vacation"
-                                    >
-                                      <Building className="h-2.5 w-2.5 mr-0.5" />{" "}
-                                      Comp
-                                    </Badge>
-                                  )}
-                                </div>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={6}
+                                className="h-24 text-center"
+                              >
+                                No vacation periods planned.
                               </TableCell>
                             </TableRow>
-                          );
-                        })
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center">
-                            No vacation periods planned.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </TabsContent>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                </TabsContent>
 
-            {monthsWithVacations.map((month) => (
-              <TabsContent key={month} value={month.toString()}>
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">
-                    {new Date(0, month).toLocaleString("default", {
-                      month: "long",
-                    })}{" "}
-                    Vacation Periods
-                  </h3>
-                  {periodsByMonth[month].map((period, index: number) => (
-                    <VacationPeriodCard key={index} period={period} />
-                  ))}
-                </div>
-              </TabsContent>
-            ))}
-          </Tabs>
+                {monthsWithVacations.map((month) => (
+                  <TabsContent key={month} value={month.toString()}>
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium">
+                        {new Date(0, month).toLocaleString("default", {
+                          month: "long",
+                        })}{" "}
+                        Vacation Periods
+                      </h3>
+                      {periodsByMonth[month].map((period, index: number) => (
+                        <VacationPeriodCard key={index} period={period} />
+                      ))}
+                    </div>
+                  </TabsContent>
+                ))}
+              </Tabs>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Calendar View Section */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-semibold leading-none tracking-tight">
-          Calendar View
-        </h2>
-        {/* Legend */}
-        <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-2">
-          <div className="flex items-center">
-            <span className="inline-block w-3 h-3 bg-green-100 rounded-sm mr-1.5"></span>
-            Planned Vacation
+      {/* Calendar View Section - Fixed structure for responsive months */}
+      <div className="rounded-lg border border-primary/10 bg-card text-card-foreground shadow-sm relative overflow-hidden">
+        {/* Gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5 pointer-events-none"></div>
+
+        {/* Content with padding */}
+        <div className="relative z-10 p-6">
+          <h2 className="text-2xl font-semibold leading-none tracking-tight text-primary mb-4">
+            Calendar View
+          </h2>
+          {/* Legend */}
+          <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-2 p-3 bg-card/50 rounded-md border border-primary/10 mb-4">
+            <div className="flex items-center">
+              <span className="inline-block w-3 h-3 bg-green-100 rounded-sm mr-1.5"></span>
+              Planned Vacation
+            </div>
+            <div className="flex items-center">
+              <span className="inline-block w-3 h-3 bg-red-100 rounded-sm mr-1.5"></span>
+              Holiday
+            </div>
+            <div className="flex items-center">
+              <span className="inline-block w-3 h-3 bg-blue-100 rounded-sm mr-1.5"></span>
+              Remote Work
+            </div>
+            <div className="flex items-center">
+              <span className="inline-block w-3 h-3 bg-purple-100 rounded-sm mr-1.5"></span>
+              Company Vacation
+            </div>
           </div>
-          <div className="flex items-center">
-            <span className="inline-block w-3 h-3 bg-red-100 rounded-sm mr-1.5"></span>
-            Holiday
-          </div>
-          <div className="flex items-center">
-            <span className="inline-block w-3 h-3 bg-blue-100 rounded-sm mr-1.5"></span>
-            Remote Work
-          </div>
-          <div className="flex items-center">
-            <span className="inline-block w-3 h-3 bg-purple-100 rounded-sm mr-1.5"></span>
-            Company Vacation
-          </div>
+
+          {/* Wrap Calendar container with TooltipProvider - IMPORTANT: this div needs the ref for responsive sizing */}
+          <TooltipProvider>
+            <div
+              ref={containerRef}
+              className="w-full overflow-hidden flex justify-center"
+            >
+              <Calendar
+                mode="multiple"
+                selected={parsedRecommendedDays}
+                month={currentDisplayMonth}
+                onMonthChange={setCurrentDisplayMonth}
+                numberOfMonths={numberOfMonths}
+                pagedNavigation
+                className="rounded-md border border-primary/10 p-3 bg-card text-card-foreground"
+                classNames={{
+                  months:
+                    "flex flex-col items-center sm:flex-row sm:items-start space-y-4 sm:space-x-4 sm:space-y-0",
+                  month: "space-y-4",
+                  caption_label: "text-base font-medium text-primary",
+                  nav_button: "h-8 w-8 text-primary hover:text-primary/80",
+                  nav_button_previous: "absolute left-1 top-1",
+                  nav_button_next: "absolute right-1 top-1",
+                  head_cell:
+                    "w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-muted-foreground rounded-md font-normal text-[0.8rem]",
+                  cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14",
+                  day: "h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 p-0 font-normal aria-selected:opacity-100",
+                  day_selected:
+                    "bg-transparent text-primary-foreground hover:bg-transparent focus:bg-transparent",
+                  day_today: "bg-accent text-accent-foreground",
+                  day_outside: "text-muted-foreground opacity-50",
+                  day_disabled: "text-muted-foreground opacity-50",
+                  day_range_middle:
+                    "aria-selected:bg-accent aria-selected:text-accent-foreground",
+                  day_hidden: "invisible",
+                }}
+                components={{
+                  Day: renderDay,
+                }}
+              />
+            </div>
+          </TooltipProvider>
         </div>
-        {/* Wrap Calendar container with TooltipProvider */}
-        <TooltipProvider>
-          <div
-            ref={containerRef}
-            className="w-full overflow-hidden flex justify-center"
-          >
-            <Calendar
-              mode="multiple"
-              selected={parsedRecommendedDays} // Still need selected for potential external interactions
-              month={currentDisplayMonth} // Use state for displayed month
-              onMonthChange={setCurrentDisplayMonth} // Update state on navigation
-              numberOfMonths={numberOfMonths} // Use calculated number of months
-              pagedNavigation
-              className="rounded-md border p-3 bg-card text-card-foreground shadow-sm" // Apply card-like styling here
-              classNames={{
-                months:
-                  "flex flex-col items-center sm:flex-row sm:items-start space-y-4 sm:space-x-4 sm:space-y-0", // Center items vertically (mobile), align start horizontally (desktop)
-                month: "space-y-4",
-                caption_label: "text-base font-medium",
-                nav_button: "h-8 w-8",
-                nav_button_previous: "absolute left-1 top-1",
-                nav_button_next: "absolute right-1 top-1",
-                head_cell:
-                  "w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-muted-foreground rounded-md font-normal text-[0.8rem]",
-                cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14",
-                day: "h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 p-0 font-normal aria-selected:opacity-100",
-                day_selected:
-                  "bg-transparent text-primary-foreground hover:bg-transparent focus:bg-transparent", // Let custom renderer handle selected style
-                day_today: "bg-accent text-accent-foreground",
-                day_outside: "text-muted-foreground opacity-50",
-                day_disabled: "text-muted-foreground opacity-50",
-                day_range_middle:
-                  "aria-selected:bg-accent aria-selected:text-accent-foreground",
-                day_hidden: "invisible",
-              }}
-              components={{
-                Day: renderDay,
-              }}
-            />
-          </div>
-        </TooltipProvider>
       </div>
     </div>
   );
@@ -719,72 +753,78 @@ function VacationPeriodCard({ period }: VacationPeriodCardProps) {
       : 0;
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-4 md:p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-          {/* Left Side: Dates & Stats */}
-          <div className="flex-1 space-y-1">
-            <div className="font-semibold text-lg flex items-center gap-2 flex-wrap">
-              <span>
-                {format(startDate, "MMM d, yyyy")} -{" "}
-                {format(endDate, "MMM d, yyyy")}
-              </span>
-              {period.isCompanyVacation && (
-                <Badge
-                  variant="outline"
-                  className="bg-purple-100 text-purple-900 border-purple-200"
-                >
-                  <Building className="h-3 w-3 mr-1" /> Company
-                </Badge>
-              )}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {period.totalDays} days off
-              </span>
-              <span> using </span>
-              <span className="font-medium text-foreground">
-                {period.vacationDaysUsed} vacation days
-              </span>
-              <span className="mx-1">·</span>
-              <span className="font-medium">
-                Efficiency: {efficiency.toFixed(2)}
-              </span>
-            </div>
-          </div>
+    <Card className="overflow-hidden border-primary/10 hover:border-primary/30 transition-colors relative">
+      {/* Gradient div directly inside the card */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5 pointer-events-none"></div>
 
-          {/* Right Side: Included Days Badges */}
-          <div className="flex flex-wrap gap-1.5 mt-2 sm:mt-0">
-            {period.includes.map((item, i) => (
-              <Badge
-                key={i}
-                variant="secondary"
-                className={cn(
-                  "font-normal",
-                  item.type === "holiday" &&
-                    "bg-red-100 text-red-900 border-red-200",
-                  item.type === "company" &&
-                    "bg-purple-100 text-purple-900 border-purple-200",
-                  item.type === "weekend" &&
-                    "bg-gray-100 text-gray-800 border-gray-200"
+      {/* Content in relative position with z-index */}
+      <div className="relative z-10">
+        <CardContent className="p-4 md:p-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+            {/* Left Side: Dates & Stats */}
+            <div className="flex-1 space-y-1">
+              <div className="font-semibold text-lg flex items-center gap-2 flex-wrap">
+                <span className="text-primary">
+                  {format(startDate, "MMM d, yyyy")} -{" "}
+                  {format(endDate, "MMM d, yyyy")}
+                </span>
+                {period.isCompanyVacation && (
+                  <Badge
+                    variant="outline"
+                    className="bg-purple-100 text-purple-900 border-purple-200"
+                  >
+                    <Building className="h-3 w-3 mr-1" /> Company
+                  </Badge>
                 )}
-              >
-                {item.type === "holiday" && (
-                  <CalendarDays className="h-3 w-3 mr-1" />
-                )}
-                {item.type === "company" && (
-                  <Building className="h-3 w-3 mr-1" />
-                )}
-                {item.type === "holiday"
-                  ? item.name // Show holiday name
-                  : item.type === "company"
-                  ? "Company Day"
-                  : "Weekend"}
-              </Badge>
-            ))}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  {period.totalDays} days off
+                </span>
+                <span> using </span>
+                <span className="font-medium text-foreground">
+                  {period.vacationDaysUsed} vacation days
+                </span>
+                <span className="mx-1">·</span>
+                <span className="font-medium text-accent">
+                  Efficiency: {efficiency.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Right Side: Included Days Badges */}
+            <div className="flex flex-wrap gap-1.5 mt-2 sm:mt-0">
+              {period.includes.map((item, i) => (
+                <Badge
+                  key={i}
+                  variant="secondary"
+                  className={cn(
+                    "font-normal",
+                    item.type === "holiday" &&
+                      "bg-red-100 text-red-900 border-red-200",
+                    item.type === "company" &&
+                      "bg-purple-100 text-purple-900 border-purple-200",
+                    item.type === "weekend" &&
+                      "bg-gray-100 text-gray-800 border-gray-200"
+                  )}
+                >
+                  {item.type === "holiday" && (
+                    <CalendarDays className="h-3 w-3 mr-1" />
+                  )}
+                  {item.type === "company" && (
+                    <Building className="h-3 w-3 mr-1" />
+                  )}
+                  {item.type === "holiday"
+                    ? item.name // Show holiday name
+                    : item.type === "company"
+                    ? "Company Day"
+                    : "Weekend"}
+                </Badge>
+              ))}
+            </div>
           </div>
-        </div>
-      </CardContent>
+        </CardContent>
+      </div>
     </Card>
   );
 }

@@ -44,6 +44,15 @@ import { cn } from "@/lib/utils";
 
 const LOCAL_STORAGE_KEY = "vacationPlannerState";
 
+// Helper function to safely parse date from string or return undefined
+function safeParseDate(
+  dateString: string | null | undefined
+): Date | undefined {
+  if (!dateString) return undefined;
+  const date = new Date(dateString);
+  return isNaN(date.getTime()) ? undefined : date;
+}
+
 // Helper function to get YYYY-MM-DD string based on LOCAL date components
 function getLocalISODateString(date: Date): string {
   if (!(date instanceof Date) || isNaN(date.getTime())) {
@@ -102,8 +111,12 @@ export default function VacationPlanner() {
   const [companyVacationDays, setCompanyVacationDays] = useState<
     CompanyVacationDay[]
   >([]);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [selectedCompanyDate, setSelectedCompanyDate] = useState<
+    Date | undefined
+  >(undefined);
+  const [isCompanyCalendarOpen, setIsCompanyCalendarOpen] = useState(false);
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [isStartCalendarOpen, setIsStartCalendarOpen] = useState(false);
 
   // --- Load State from localStorage on Mount ---
   useEffect(() => {
@@ -131,6 +144,10 @@ export default function VacationPlanner() {
           setConsiderRemoteWork(parsedState.considerRemoteWork);
         if (Array.isArray(parsedState.companyVacationDays))
           setCompanyVacationDays(parsedState.companyVacationDays);
+        // Load start date, ensuring it's parsed correctly
+        if (typeof parsedState.startDate === "string") {
+          setStartDate(safeParseDate(parsedState.startDate));
+        }
       }
     } catch (error) {
       console.error("Failed to load state from localStorage:", error);
@@ -150,6 +167,7 @@ export default function VacationPlanner() {
         year,
         considerRemoteWork,
         companyVacationDays,
+        startDate: startDate ? startDate.toISOString() : undefined,
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
     } catch (error) {
@@ -164,6 +182,7 @@ export default function VacationPlanner() {
     year,
     considerRemoteWork,
     companyVacationDays,
+    startDate,
   ]);
 
   const handleWorkdayChange = (day: DayKey) => {
@@ -192,10 +211,10 @@ export default function VacationPlanner() {
   };
 
   const addCompanyVacationDay = (duration: number) => {
-    if (!selectedDate) return;
+    if (!selectedCompanyDate) return;
 
     // Format the date to YYYY-MM-DD string using local date components
-    const dateStr = getLocalISODateString(selectedDate);
+    const dateStr = getLocalISODateString(selectedCompanyDate);
 
     // Check if this date is already added
     const exists = companyVacationDays.some((day) => day.date === dateStr);
@@ -208,7 +227,8 @@ export default function VacationPlanner() {
           duration: duration,
         },
       ]);
-      setSelectedDate(undefined);
+      setSelectedCompanyDate(undefined);
+      setIsCompanyCalendarOpen(false);
     }
   };
 
@@ -256,7 +276,8 @@ export default function VacationPlanner() {
       year,
       remoteWorkdayNumbers,
       companyVacationDays,
-      selectedState
+      selectedState,
+      startDate
     );
 
     console.log(
@@ -270,6 +291,11 @@ export default function VacationPlanner() {
 
   // Filter dates to only allow selecting dates in the selected year
   const dateFilter = (date: Date): boolean => {
+    return date.getFullYear() !== year;
+  };
+
+  // Filter dates for the start date picker: only allow dates in the selected year
+  const startDateFilter = (date: Date): boolean => {
     return date.getFullYear() !== year;
   };
 
@@ -323,6 +349,63 @@ export default function VacationPlanner() {
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* Start Date Selector */}
+        <div className="pt-2">
+          <Label htmlFor="start-date">Optimization Start Date (Optional)</Label>
+          <Popover
+            open={isStartCalendarOpen}
+            onOpenChange={setIsStartCalendarOpen}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                id="start-date"
+                className={cn(
+                  "w-full justify-start text-left font-normal mt-1",
+                  !startDate && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {startDate ? (
+                  format(startDate, "PPP")
+                ) : (
+                  <span>Pick a start date</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={startDate}
+                onSelect={(date) => {
+                  setStartDate(date as Date | undefined);
+                  setIsStartCalendarOpen(false);
+                }}
+                disabled={startDateFilter}
+                initialFocus
+                fixedWeeks
+              />
+              <div className="p-2 border-t border-border">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-center"
+                  onClick={() => {
+                    setStartDate(undefined);
+                    setIsStartCalendarOpen(false);
+                  }}
+                >
+                  Clear Start Date
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+          <p className="text-sm text-muted-foreground mt-1">
+            The optimizer will only consider vacation periods starting on or
+            after this date.
+          </p>
         </div>
 
         <Separator />
@@ -431,20 +514,25 @@ export default function VacationPlanner() {
                 </p>
               </div>
 
-              <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+              <Popover
+                open={isCompanyCalendarOpen}
+                onOpenChange={setIsCompanyCalendarOpen}
+              >
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start">
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate
-                      ? format(selectedDate, "PPP")
+                    {selectedCompanyDate
+                      ? format(selectedCompanyDate, "PPP")
                       : "Add Company Vacation Day"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-4 space-y-4">
                   <Calendar
                     mode="single"
-                    selected={selectedDate}
-                    onSelect={setSelectedDate as SelectSingleEventHandler}
+                    selected={selectedCompanyDate}
+                    onSelect={
+                      setSelectedCompanyDate as SelectSingleEventHandler
+                    }
                     disabled={dateFilter}
                     initialFocus
                     fixedWeeks
@@ -454,14 +542,14 @@ export default function VacationPlanner() {
                     <div className="grid grid-cols-2 gap-2">
                       <Button
                         onClick={() => addCompanyVacationDay(0.5)}
-                        disabled={!selectedDate}
+                        disabled={!selectedCompanyDate}
                         variant="outline"
                       >
                         Add Half Day
                       </Button>
                       <Button
                         onClick={() => addCompanyVacationDay(1)}
-                        disabled={!selectedDate}
+                        disabled={!selectedCompanyDate}
                       >
                         Add Full Day
                       </Button>
@@ -473,7 +561,6 @@ export default function VacationPlanner() {
               {companyVacationDays.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-base font-medium">Added Days</Label>
-                  {/* Use Card styling for the table container */}
                   <div className="rounded-lg border overflow-hidden">
                     <Table>
                       <TableHeader>
@@ -491,7 +578,7 @@ export default function VacationPlanner() {
                             (a, b) =>
                               new Date(a.date).getTime() -
                               new Date(b.date).getTime()
-                          ) // Sort days chronologically
+                          )
                           .map((day) => (
                             <TableRow key={day.date}>
                               <TableCell className="font-medium">

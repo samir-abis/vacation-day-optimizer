@@ -10,7 +10,8 @@ export function calculateOptimalVacationDays(
   year: number,
   remoteWorkdays: number[] = [],
   companyVacationDays: CompanyVacationDay[] = [],
-  state: string | null = null
+  state: string | null = null,
+  optimizationStartDateParam?: Date
 ): VacationPlan {
   console.log("[Optimizer] Received remoteWorkdays:", remoteWorkdays);
   console.log(
@@ -20,7 +21,29 @@ export function calculateOptimalVacationDays(
   const today = new Date();
   const calculationEndDate = new Date(year + 1, 0, 15);
 
-  const startDate = year === today.getFullYear() ? today : new Date(year, 0, 1);
+  let optimizationStartDate: Date;
+  if (optimizationStartDateParam) {
+    const startParam = optimizationStartDateParam;
+    optimizationStartDate = new Date(
+      startParam.getFullYear(),
+      startParam.getMonth(),
+      startParam.getDate()
+    );
+  } else {
+    optimizationStartDate =
+      year === today.getFullYear()
+        ? new Date(today.getFullYear(), today.getMonth(), today.getDate())
+        : new Date(year, 0, 1);
+  }
+
+  const yearStartDate = new Date(year, 0, 1);
+  if (optimizationStartDate < yearStartDate) {
+    optimizationStartDate = yearStartDate;
+  }
+
+  console.log(
+    `[Optimizer] Effective Optimization Start Date: ${optimizationStartDate.toISOString()}`
+  );
 
   let allHolidays = [...initialHolidays];
 
@@ -42,10 +65,14 @@ export function calculateOptimalVacationDays(
   );
   const holidays = Array.from(uniqueHolidaysMap.values());
   const relevantHolidays = holidays.filter(
-    (h) => h.date >= startDate && h.date <= calculationEndDate
+    (h) => h.date >= optimizationStartDate && h.date <= calculationEndDate
   );
 
-  const allWorkdays = getAllWorkdays(startDate, calculationEndDate, workdays);
+  const allWorkdays = getAllWorkdays(
+    optimizationStartDate,
+    calculationEndDate,
+    workdays
+  );
 
   const holidayDates = relevantHolidays.map(
     (h) => h.date.toISOString().split("T")[0]
@@ -119,7 +146,11 @@ export function calculateOptimalVacationDays(
   );
 
   const endOfYear = new Date(year, 11, 31);
-  const workdaysInYear = getAllWorkdays(startDate, endOfYear, workdays);
+  const workdaysInYear = getAllWorkdays(
+    optimizationStartDate,
+    endOfYear,
+    workdays
+  );
   const remoteWorkdayDates = workdaysInYear
     .filter(
       (day) =>

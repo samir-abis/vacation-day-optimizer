@@ -37,8 +37,13 @@ import {
 } from "@/lib/holidays";
 import { calculateOptimalVacationDays } from "@/lib/vacation-optimizer";
 import { VacationPlan, CompanyVacationDay } from "@/lib/types";
-import VacationResults from "./vacation-results";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { CalendarIcon, Trash2 } from "lucide-react";
@@ -116,7 +121,11 @@ type WorkdayState = {
 
 type DayKey = keyof WorkdayState;
 
-export default function VacationPlanner() {
+interface VacationPlannerProps {
+  onVacationPlanCalculated: (plan: VacationPlan | null) => void;
+}
+
+export default function VacationPlanner({ onVacationPlanCalculated }: VacationPlannerProps) {
   const currentYear = new Date().getFullYear();
 
   // --- State Initialization with Defaults ---
@@ -482,26 +491,30 @@ export default function VacationPlanner() {
         if (remoteWorkdays.sunday) remoteWorkdayNumbers.push(0);
       }
 
-      // 5. Calculate optimal vacation days
-      const result = calculateOptimalVacationDays(
+      // 5. Calculate optimal vacation days using the function with positional parameters
+      const plan = await calculateOptimalVacationDays(
         remainingDays,
         workdayNumbers,
-        mappedHolidays, // Pass filtered and mapped holidays
+        mappedHolidays,
         year,
-        remoteWorkdayNumbers,
+        considerRemoteWork ? remoteWorkdayNumbers : [],
         companyVacationDays,
         selectedCountryCode,
         startDate
       );
 
-      setVacationPlan(result);
+      setVacationPlan(plan);
+      
+      // Call the callback to pass the result to the parent component
+      onVacationPlanCalculated(plan);
+      
     } catch (error) {
       console.error("Error during vacation plan calculation:", error);
       setCalculationError(
-        `Calculation failed: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }. Please check console for details.`
+        `Calculation failed: ${error instanceof Error ? error.message : "Unknown error"}. Please check console for details.`
       );
+      // Also call the callback with null to indicate failure
+      onVacationPlanCalculated(null);
     }
 
     setIsCalculating(false);
@@ -540,33 +553,42 @@ export default function VacationPlanner() {
         )}
 
         {/* Initial Settings Group */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="remaining-days">Vacation Budget</Label>
-            <Input
-              id="remaining-days"
-              type="number"
-              min="1"
-              max="100"
-              value={remainingDays}
-              onChange={(e) =>
-                setRemainingDays(Number.parseInt(e.target.value) || 0)
-              }
-            />
+        <div className="space-y-4">
+          {/* Row for Budget and Year */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="remaining-days">Vacation Budget</Label>
+              <Input
+                id="remaining-days"
+                type="number"
+                min="0"
+                max="366"
+                value={remainingDays}
+                onChange={(e) =>
+                  setRemainingDays(Number.parseInt(e.target.value) || 0)
+                }
+                className="text-center"
+                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="year">Year</Label>
+              <Input
+                id="year"
+                type="number"
+                min={currentYear}
+                max={2030}
+                value={year}
+                onChange={(e) =>
+                  setYear(Number.parseInt(e.target.value) || currentYear)
+                }
+                className="text-center"
+                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="year">Year</Label>
-            <Input
-              id="year"
-              type="number"
-              min={currentYear}
-              max={2030}
-              value={year}
-              onChange={(e) =>
-                setYear(Number.parseInt(e.target.value) || currentYear)
-              }
-            />
-          </div>
+
+          {/* Country (Full Width) */}
           <div className="space-y-2">
             <Label htmlFor="country">Country</Label>
             <Select
@@ -574,7 +596,7 @@ export default function VacationPlanner() {
               onValueChange={setSelectedCountryCode}
               disabled={isFetchingCountries || !!fetchCountriesError}
             >
-              <SelectTrigger id="country">
+              <SelectTrigger id="country" className="w-full">
                 <SelectValue placeholder="Select country..." />
               </SelectTrigger>
               <SelectContent>
@@ -593,6 +615,8 @@ export default function VacationPlanner() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Region / State (Conditional, Full Width) */}
           {countryHasSubdivisions && (
             <div className="space-y-2">
               <Label htmlFor="subdivision">Region / State</Label>
@@ -605,7 +629,7 @@ export default function VacationPlanner() {
                   isFetchingHolidays || availableSubdivisions.length === 0
                 }
               >
-                <SelectTrigger id="subdivision">
+                <SelectTrigger id="subdivision" className="w-full">
                   <SelectValue placeholder="Select region/state..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -637,7 +661,12 @@ export default function VacationPlanner() {
           <Label htmlFor="start-date">Optimization Start Date (Optional)</Label>
           <Popover
             open={isStartCalendarOpen}
-            onOpenChange={setIsStartCalendarOpen}
+            onOpenChange={(open) => {
+              if (open && !startDate) {
+                setStartDate(new Date());
+              }
+              setIsStartCalendarOpen(open);
+            }}
           >
             <PopoverTrigger asChild>
               <Button
@@ -691,207 +720,216 @@ export default function VacationPlanner() {
 
         <Separator />
 
-        <Tabs defaultValue="workdays">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="workdays">Workdays</TabsTrigger>
-            <TabsTrigger value="remote">Remote Work</TabsTrigger>
-            <TabsTrigger value="company">Company Vacation</TabsTrigger>
-          </TabsList>
-
-          {/* Workdays Tab */}
-          <TabsContent value="workdays" className="pt-4">
-            <div className="space-y-4">
-              <Label className="text-base font-medium">
-                Select your regular working days
-              </Label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
-                {Object.entries(workdays).map(([day, checked]) => (
-                  <div key={day} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`workday-${day}`}
-                      checked={checked}
-                      onCheckedChange={() => handleWorkdayChange(day as DayKey)}
-                    />
-                    <Label htmlFor={`workday-${day}`} className="capitalize">
-                      {day}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Remote Work Tab */}
-          <TabsContent value="remote" className="pt-4">
-            <div className="space-y-6">
+        <Accordion type="multiple" className="w-full space-y-4">
+          {/* Workdays Section */}
+          <AccordionItem value="workdays">
+            <AccordionTrigger className="text-base font-medium">
+              Workdays
+            </AccordionTrigger>
+            <AccordionContent className="pt-4">
               <div className="space-y-4">
-                <div className="flex items-start space-x-2">
-                  <Checkbox
-                    id="consider-remote"
-                    checked={considerRemoteWork}
-                    onCheckedChange={() =>
-                      setConsiderRemoteWork(!considerRemoteWork)
-                    }
-                    className="mt-1"
-                  />
-                  <div className="grid gap-1.5 leading-none">
-                    <Label htmlFor="consider-remote" className="font-medium">
-                      Consider remote work days during planning
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Prioritize vacation on non-remote workdays.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <Label className="text-base font-medium">
-                  Select your remote workdays
+                <Label>
+                  Select your regular working days
                 </Label>
-                <p className="text-sm text-muted-foreground">
-                  Only applicable if the day is also selected as a workday.
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
-                  {Object.entries(remoteWorkdays).map(([day, checked]) => (
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.entries(workdays).map(([day, checked]) => (
                     <div key={day} className="flex items-center space-x-2">
                       <Checkbox
-                        id={`remote-${day}`}
+                        id={`workday-${day}`}
                         checked={checked}
-                        disabled={!workdays[day as DayKey]}
-                        onCheckedChange={() =>
-                          handleRemoteWorkdayChange(day as DayKey)
-                        }
+                        onCheckedChange={() => handleWorkdayChange(day as DayKey)}
                       />
-                      <Label
-                        htmlFor={`remote-${day}`}
-                        className={`capitalize ${
-                          !workdays[day as DayKey]
-                            ? "text-muted-foreground"
-                            : ""
-                        }`}
-                      >
+                      <Label htmlFor={`workday-${day}`} className="capitalize">
                         {day}
                       </Label>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
-          </TabsContent>
+            </AccordionContent>
+          </AccordionItem>
 
-          {/* Company Vacation Tab */}
-          <TabsContent value="company" className="pt-4">
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-base font-medium">
-                  Mandatory Company Vacation
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Add company-mandated vacation days. These will be deducted
-                  first and included in the plan.
-                </p>
-              </div>
-
-              <Popover
-                open={isCompanyCalendarOpen}
-                onOpenChange={setIsCompanyCalendarOpen}
-              >
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedCompanyDate
-                      ? format(selectedCompanyDate, "PPP")
-                      : "Add Company Vacation Day"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-4 space-y-4">
-                  <Calendar
-                    mode="single"
-                    selected={selectedCompanyDate}
-                    onSelect={
-                      setSelectedCompanyDate as SelectSingleEventHandler
-                    }
-                    disabled={dateFilter}
-                    initialFocus
-                    fixedWeeks
-                  />
-                  <div className="space-y-2">
-                    <Label htmlFor="company-vacation-duration">Duration</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        onClick={() => addCompanyVacationDay(0.5)}
-                        disabled={!selectedCompanyDate}
-                        variant="outline"
-                      >
-                        Add Half Day
-                      </Button>
-                      <Button
-                        onClick={() => addCompanyVacationDay(1)}
-                        disabled={!selectedCompanyDate}
-                      >
-                        Add Full Day
-                      </Button>
+          {/* Remote Work Section */}
+          <AccordionItem value="remote">
+            <AccordionTrigger className="text-base font-medium">
+              Remote Work Options
+            </AccordionTrigger>
+            <AccordionContent className="pt-4">
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-start space-x-2">
+                    <Checkbox
+                      id="consider-remote"
+                      checked={considerRemoteWork}
+                      onCheckedChange={() =>
+                        setConsiderRemoteWork(!considerRemoteWork)
+                      }
+                      className="mt-1"
+                    />
+                    <div className="grid gap-1.5 leading-none">
+                      <Label htmlFor="consider-remote" className="font-medium">
+                        Consider remote work days during planning
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Prioritize vacation on non-remote workdays.
+                      </p>
                     </div>
                   </div>
-                </PopoverContent>
-              </Popover>
+                </div>
 
-              {companyVacationDays.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-base font-medium">Added Days</Label>
-                  <div className="rounded-lg border overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead className="text-center">
-                            Duration
-                          </TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {companyVacationDays
-                          .sort(
-                            (a, b) =>
-                              new Date(a.date).getTime() -
-                              new Date(b.date).getTime()
-                          )
-                          .map((day) => (
-                            <TableRow key={day.date}>
-                              <TableCell className="font-medium">
-                                {format(new Date(day.date), "PPP")}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {day.duration} day
-                                {day.duration !== 1 ? "s" : ""}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() =>
-                                    removeCompanyVacationDay(day.date)
-                                  }
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                  <span className="sr-only">Remove</span>
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                      </TableBody>
-                    </Table>
+                <Separator />
+
+                <div className="space-y-4">
+                  <Label>
+                    Select your remote workdays
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Only applicable if the day is also selected as a workday.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {Object.entries(remoteWorkdays).map(([day, checked]) => (
+                      <div key={day} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`remote-${day}`}
+                          checked={checked}
+                          disabled={!workdays[day as DayKey]}
+                          onCheckedChange={() =>
+                            handleRemoteWorkdayChange(day as DayKey)
+                          }
+                        />
+                        <Label
+                          htmlFor={`remote-${day}`}
+                          className={`capitalize ${
+                            !workdays[day as DayKey]
+                              ? "text-muted-foreground"
+                              : ""
+                          }`}
+                        >
+                          {day}
+                        </Label>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Company Vacation Section */}
+          <AccordionItem value="company">
+            <AccordionTrigger className="text-base font-medium">
+              Company Vacation
+            </AccordionTrigger>
+            <AccordionContent className="pt-4">
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-medium">
+                    Mandatory Company Vacation
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Add company-mandated vacation days. These will be deducted
+                    first and included in the plan.
+                  </p>
+                </div>
+
+                <Popover
+                  open={isCompanyCalendarOpen}
+                  onOpenChange={setIsCompanyCalendarOpen}
+                >
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {selectedCompanyDate
+                        ? format(selectedCompanyDate, "PPP")
+                        : "Add Company Vacation Day"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-4 space-y-4">
+                    <Calendar
+                      mode="single"
+                      selected={selectedCompanyDate}
+                      onSelect={
+                        setSelectedCompanyDate as SelectSingleEventHandler
+                      }
+                      disabled={dateFilter}
+                      initialFocus
+                      fixedWeeks
+                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="company-vacation-duration">Duration</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          onClick={() => addCompanyVacationDay(0.5)}
+                          disabled={!selectedCompanyDate}
+                          variant="outline"
+                        >
+                          Add Half Day
+                        </Button>
+                        <Button
+                          onClick={() => addCompanyVacationDay(1)}
+                          disabled={!selectedCompanyDate}
+                        >
+                          Add Full Day
+                        </Button>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                {companyVacationDays.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-base font-medium">Added Days</Label>
+                    <div className="rounded-lg border overflow-hidden overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead className="text-center">
+                              Duration
+                            </TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {companyVacationDays
+                            .sort(
+                              (a, b) =>
+                                new Date(a.date).getTime() -
+                                new Date(b.date).getTime()
+                            )
+                            .map((day) => (
+                              <TableRow key={day.date}>
+                                <TableCell className="font-medium">
+                                  {format(new Date(day.date), "PPP")}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {day.duration} day
+                                  {day.duration !== 1 ? "s" : ""}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() =>
+                                      removeCompanyVacationDay(day.date)
+                                    }
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="sr-only">Remove</span>
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
         <Separator />
 
@@ -926,7 +964,6 @@ export default function VacationPlanner() {
         </Button>
       </div>
 
-      {vacationPlan && <VacationResults plan={vacationPlan} />}
     </div>
   );
 }

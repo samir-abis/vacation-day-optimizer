@@ -413,35 +413,7 @@ export default function VacationResults({ plan }: VacationResultsProps) {
         <h2 className="text-2xl font-semibold leading-none tracking-tight mb-4">
           Your Optimal Vacation Plan Summary
         </h2>
-        {/* Summary Statistics Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <StatCard
-            label="Planned Days Used (Budget)"
-            value={optimizedVacationDaysCost}
-            description={`Budget: ${optimizerBudget}`}
-          />
-          <StatCard
-            label="Remaining Budget Days"
-            value={remainingVacationDays}
-          />
-          {companyVacationDaysCost > 0 && (
-            <StatCard
-              label="Company Vacation Cost"
-              value={companyVacationDaysCost}
-            />
-          )}
-          <StatCard
-            label="Total Vacation Cost"
-            value={totalVacationDaysUsed}
-            description="Planned + Company"
-          />
-          <StatCard label="Total Days Off" value={totalDaysOff} />
-          <StatCard
-            label="Efficiency Ratio (Planned)"
-            value={efficiency.toFixed(2)}
-            description="Days off per planned day"
-          />
-        </div>
+
 
         <Separator />
 
@@ -524,31 +496,32 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                     </TableHeader>
                     <TableBody>
                       {sortedVacationPeriods.length > 0 ? (
-                        sortedVacationPeriods.map((period, index) => {
-                          const efficiency =
-                            period.vacationDaysUsed > 0
-                              ? period.totalDays / period.vacationDaysUsed
-                              : 0;
-                          return (
-                            <TableRow key={index}>
-                              <TableCell className="font-medium">
-                                {format(
-                                  new Date(period.startDate),
-                                  "MMM d, yyyy"
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {format(
-                                  new Date(period.endDate),
-                                  "MMM d, yyyy"
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {period.totalDays}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {period.vacationDaysUsed}
-                              </TableCell>
+                        <>  
+                          {sortedVacationPeriods.map((period, index) => {
+                            const efficiency =
+                              period.vacationDaysUsed > 0
+                                ? period.totalDays / period.vacationDaysUsed
+                                : 0;
+                            return (
+                              <TableRow key={index}>
+                                <TableCell className="font-medium">
+                                  {format(
+                                    new Date(period.startDate),
+                                    "MMM d, yyyy"
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {format(
+                                    new Date(period.endDate),
+                                    "MMM d, yyyy"
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {period.totalDays}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {period.vacationDaysUsed}
+                                </TableCell>
                               <TableCell className="text-right">
                                 {efficiency.toFixed(2)}
                               </TableCell>
@@ -600,7 +573,24 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                               </TableCell>
                             </TableRow>
                           );
-                        })
+                          })}
+                          {/* Total Row */}
+                          <TableRow className="font-medium bg-muted/50">
+                            <TableCell colSpan={2}>
+                              Total
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {totalDaysOff}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {totalVacationDaysUsed}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {efficiency.toFixed(2)}
+                            </TableCell>
+                            <TableCell></TableCell>
+                          </TableRow>
+                        </>
                       ) : (
                         <TableRow>
                           <TableCell colSpan={6} className="h-24 text-center">

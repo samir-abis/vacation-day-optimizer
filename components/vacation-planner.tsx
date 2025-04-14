@@ -119,7 +119,7 @@ export default function VacationPlanner() {
   const currentYear = new Date().getFullYear();
 
   // --- State Initialization with Defaults ---
-  const [remainingDays, setRemainingDays] = useState<number>(14);
+  const [remainingDays, setRemainingDays] = useState<number>(20);
   // -- Country State --
   const [availableCountries, setAvailableCountries] = useState<CountryOption[]>(
     []
@@ -141,10 +141,10 @@ export default function VacationPlanner() {
   });
   const [remoteWorkdays, setRemoteWorkdays] = useState<WorkdayState>({
     monday: false,
-    tuesday: true,
+    tuesday: false,
     wednesday: false,
     thursday: false,
-    friday: true,
+    friday: false,
     saturday: false,
     sunday: false,
   });

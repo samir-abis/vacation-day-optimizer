@@ -413,7 +413,7 @@ export default function VacationPlanner() {
       setIsCalculating(false);
       return;
     }
-    if (countryHasSubdivisions && !selectedSubdivisionCode) {
+    if (regionSelectionRequired && !selectedSubdivisionCode) {
       setCalculationError("Please select a region/state for this country.");
       setIsCalculating(false);
       return;

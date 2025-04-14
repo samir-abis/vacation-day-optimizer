@@ -182,6 +182,10 @@ export default function VacationPlanner() {
     return countriesWithSubdivisions.includes(selectedCountryCode);
   }, [selectedCountryCode]);
 
+  // Helper: Should region selection be required?
+  const regionSelectionRequired =
+    countryHasSubdivisions && availableSubdivisions.length > 0;
+
   // --- Fetch Available Countries on Mount ---
   useEffect(() => {
     const fetchCountries = async () => {
@@ -1060,7 +1064,7 @@ export default function VacationPlanner() {
               !!fetchCountriesError ||
               !!fetchHolidaysError ||
               !selectedCountryCode ||
-              (countryHasSubdivisions && !selectedSubdivisionCode)
+              (regionSelectionRequired && !selectedSubdivisionCode)
             }
             className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground transition-colors shadow-md"
             size="lg"

@@ -88,8 +88,12 @@ export default function VacationResults({ plan }: VacationResultsProps) {
 
   // Custom day renderer for the calendar
   const renderDay = (props: CustomDayProps) => {
-    // Extract the date and relevant props, including className
-    const { date, className: propsClassName, ...restProps } = props;
+    const {
+      date,
+      displayMonth,
+      className: propsClassName,
+      ...restProps
+    } = props;
 
     if (!date) return null;
 
@@ -99,34 +103,44 @@ export default function VacationResults({ plan }: VacationResultsProps) {
     const isRemoteWorkday = isDateInArray(date, parsedRemoteWorkdays);
     const isCompanyVacationDay = isDateInArray(date, parsedCompanyVacationDays);
 
-    let className = "";
+    let dayClassName = ""; // Renamed to avoid conflict
     let holidayName = "";
     let label = "";
 
     if (isHoliday) {
-      className = "bg-red-100 text-red-800 rounded-full";
+      dayClassName = "bg-red-100 text-red-800"; // Removed rounded-full
       // Find the holiday name
       const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
       holidayName = holidayNamesByDate[dateKey] || "";
       label = holidayName;
     } else if (isCompanyVacationDay) {
-      className = "bg-purple-100 text-purple-800 rounded-full";
+      dayClassName = "bg-purple-100 text-purple-800"; // Removed rounded-full
       label = "Company";
     } else if (isVacationDay) {
-      className = "bg-green-100 text-green-800 rounded-full";
+      dayClassName = "bg-green-100 text-green-800"; // Removed rounded-full
     } else if (isRemoteWorkday) {
-      className = "bg-blue-100 text-blue-800 rounded-full";
+      dayClassName = "bg-blue-100 text-blue-800"; // Removed rounded-full
       label = "Remote";
+    }
+
+    // Ensure label is shortened if too long, but allow more space
+    if (label.length > 8) {
+      label = label.substring(0, 6) + "...";
     }
 
     return (
       <div
         {...restProps}
-        className={`relative p-2 ${className} ${propsClassName || ""}`}
+        // Use flex column, center items, text-center, ensure full width/height, add padding
+        className={`flex flex-col items-center justify-center w-full h-full p-1 text-center ${dayClassName} ${
+          propsClassName || ""
+        }`}
       >
-        <span>{date.getDate()}</span>
+        {/* Make date slightly smaller */}
+        <span className="text-xs">{date.getDate()}</span>
+        {/* Make label small, allow wrapping, center text */}
         {label && (
-          <span className="absolute bottom-0 left-0 right-0 text-[8px] text-center overflow-hidden text-ellipsis whitespace-nowrap px-1">
+          <span className="text-[9px] text-center mt-0.5 leading-tight break-words max-w-full">
             {label}
           </span>
         )}
@@ -253,11 +267,19 @@ export default function VacationResults({ plan }: VacationResultsProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex justify-center">
+          <div>
             <Calendar
               mode="multiple"
               selected={parsedRecommendedDays}
-              className="rounded-md border"
+              className="rounded-md border w-full"
+              classNames={{
+                months: "flex flex-col sm:flex-row sm:justify-between w-full",
+                month: "space-y-4 flex-1",
+                day: "w-full",
+                head_cell:
+                  "w-full text-center text-muted-foreground rounded-md font-normal text-[0.8rem]",
+                cell: "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 flex-1 h-14",
+              }}
               components={{
                 Day: renderDay,
               }}

@@ -1,26 +1,55 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
-import { germanStates, getNationalHolidays, getRegionalHolidays } from "@/lib/holidays"
-import { calculateOptimalVacationDays } from "@/lib/vacation-optimizer"
-import VacationResults from "./vacation-results"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar } from "@/components/ui/calendar"
-import { format } from "date-fns"
-import { X } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  germanStates,
+  getNationalHolidays,
+  getRegionalHolidays,
+} from "@/lib/holidays";
+import {
+  calculateOptimalVacationDays,
+  VacationPlan,
+  CompanyVacationDay,
+} from "@/lib/vacation-optimizer";
+import VacationResults from "./vacation-results";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { SelectSingleEventHandler } from "react-day-picker";
+
+// Define types for state
+type WorkdayState = {
+  monday: boolean;
+  tuesday: boolean;
+  wednesday: boolean;
+  thursday: boolean;
+  friday: boolean;
+  saturday: boolean;
+  sunday: boolean;
+};
+
+type DayKey = keyof WorkdayState;
 
 export default function VacationPlanner() {
-  const currentYear = new Date().getFullYear()
-  const [remainingDays, setRemainingDays] = useState(14)
-  const [selectedState, setSelectedState] = useState("baden-wurttemberg")
-  const [workdays, setWorkdays] = useState({
+  const currentYear = new Date().getFullYear();
+  const [remainingDays, setRemainingDays] = useState<number>(14);
+  const [selectedState, setSelectedState] =
+    useState<string>("baden-wurttemberg");
+  const [workdays, setWorkdays] = useState<WorkdayState>({
     monday: true,
     tuesday: true,
     wednesday: true,
@@ -28,8 +57,8 @@ export default function VacationPlanner() {
     friday: true,
     saturday: false,
     sunday: false,
-  })
-  const [remoteWorkdays, setRemoteWorkdays] = useState({
+  });
+  const [remoteWorkdays, setRemoteWorkdays] = useState<WorkdayState>({
     monday: false,
     tuesday: true,
     wednesday: false,
@@ -37,48 +66,50 @@ export default function VacationPlanner() {
     friday: true,
     saturday: false,
     sunday: false,
-  })
-  const [year, setYear] = useState(currentYear)
-  const [vacationPlan, setVacationPlan] = useState(null)
-  const [isCalculating, setIsCalculating] = useState(false)
-  const [considerRemoteWork, setConsiderRemoteWork] = useState(true)
-  const [companyVacationDays, setCompanyVacationDays] = useState([])
-  const [selectedDate, setSelectedDate] = useState(null)
-  const [selectedDuration, setSelectedDuration] = useState("1")
+  });
+  const [year, setYear] = useState<number>(currentYear);
+  const [vacationPlan, setVacationPlan] = useState<VacationPlan | null>(null);
+  const [isCalculating, setIsCalculating] = useState<boolean>(false);
+  const [considerRemoteWork, setConsiderRemoteWork] = useState<boolean>(true);
+  const [companyVacationDays, setCompanyVacationDays] = useState<
+    CompanyVacationDay[]
+  >([]);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedDuration, setSelectedDuration] = useState<string>("1");
 
-  const handleWorkdayChange = (day) => {
+  const handleWorkdayChange = (day: DayKey) => {
     setWorkdays((prev) => ({
       ...prev,
       [day]: !prev[day],
-    }))
+    }));
 
     // If a day is not a workday, it can't be a remote workday
     if (!workdays[day]) {
       setRemoteWorkdays((prev) => ({
         ...prev,
         [day]: false,
-      }))
+      }));
     }
-  }
+  };
 
-  const handleRemoteWorkdayChange = (day) => {
+  const handleRemoteWorkdayChange = (day: DayKey) => {
     // Only allow changing remote status for workdays
     if (workdays[day]) {
       setRemoteWorkdays((prev) => ({
         ...prev,
         [day]: !prev[day],
-      }))
+      }));
     }
-  }
+  };
 
   const addCompanyVacationDay = () => {
-    if (!selectedDate) return
+    if (!selectedDate) return;
 
     // Format the date to ISO string for storage
-    const dateStr = selectedDate.toISOString()
+    const dateStr = selectedDate.toISOString();
 
     // Check if this date is already added
-    const exists = companyVacationDays.some((day) => day.date === dateStr)
+    const exists = companyVacationDays.some((day) => day.date === dateStr);
 
     if (!exists) {
       setCompanyVacationDays([
@@ -87,44 +118,46 @@ export default function VacationPlanner() {
           date: dateStr,
           duration: Number.parseFloat(selectedDuration),
         },
-      ])
-      setSelectedDate(null)
+      ]);
+      setSelectedDate(undefined);
     }
-  }
+  };
 
-  const removeCompanyVacationDay = (dateToRemove) => {
-    setCompanyVacationDays(companyVacationDays.filter((day) => day.date !== dateToRemove))
-  }
+  const removeCompanyVacationDay = (dateToRemove: string) => {
+    setCompanyVacationDays(
+      companyVacationDays.filter((day) => day.date !== dateToRemove)
+    );
+  };
 
   const calculateVacationPlan = () => {
-    setIsCalculating(true)
+    setIsCalculating(true);
 
     // Get the workdays as array of numbers (0 = Sunday, 1 = Monday, etc.)
-    const workdayNumbers = []
-    if (workdays.monday) workdayNumbers.push(1)
-    if (workdays.tuesday) workdayNumbers.push(2)
-    if (workdays.wednesday) workdayNumbers.push(3)
-    if (workdays.thursday) workdayNumbers.push(4)
-    if (workdays.friday) workdayNumbers.push(5)
-    if (workdays.saturday) workdayNumbers.push(6)
-    if (workdays.sunday) workdayNumbers.push(0)
+    const workdayNumbers = [];
+    if (workdays.monday) workdayNumbers.push(1);
+    if (workdays.tuesday) workdayNumbers.push(2);
+    if (workdays.wednesday) workdayNumbers.push(3);
+    if (workdays.thursday) workdayNumbers.push(4);
+    if (workdays.friday) workdayNumbers.push(5);
+    if (workdays.saturday) workdayNumbers.push(6);
+    if (workdays.sunday) workdayNumbers.push(0);
 
     // Get remote workdays as array of numbers
-    const remoteWorkdayNumbers = []
+    const remoteWorkdayNumbers = [];
     if (considerRemoteWork) {
-      if (remoteWorkdays.monday) remoteWorkdayNumbers.push(1)
-      if (remoteWorkdays.tuesday) remoteWorkdayNumbers.push(2)
-      if (remoteWorkdays.wednesday) remoteWorkdayNumbers.push(3)
-      if (remoteWorkdays.thursday) remoteWorkdayNumbers.push(4)
-      if (remoteWorkdays.friday) remoteWorkdayNumbers.push(5)
-      if (remoteWorkdays.saturday) remoteWorkdayNumbers.push(6)
-      if (remoteWorkdays.sunday) remoteWorkdayNumbers.push(0)
+      if (remoteWorkdays.monday) remoteWorkdayNumbers.push(1);
+      if (remoteWorkdays.tuesday) remoteWorkdayNumbers.push(2);
+      if (remoteWorkdays.wednesday) remoteWorkdayNumbers.push(3);
+      if (remoteWorkdays.thursday) remoteWorkdayNumbers.push(4);
+      if (remoteWorkdays.friday) remoteWorkdayNumbers.push(5);
+      if (remoteWorkdays.saturday) remoteWorkdayNumbers.push(6);
+      if (remoteWorkdays.sunday) remoteWorkdayNumbers.push(0);
     }
 
     // Get holidays for the selected state
-    const nationalHolidays = getNationalHolidays(year)
-    const stateHolidays = getRegionalHolidays(selectedState, year)
-    const allHolidays = [...nationalHolidays, ...stateHolidays]
+    const nationalHolidays = getNationalHolidays(year);
+    const stateHolidays = getRegionalHolidays(selectedState, year);
+    const allHolidays = [...nationalHolidays, ...stateHolidays];
 
     // Calculate optimal vacation days
     const result = calculateOptimalVacationDays(
@@ -133,17 +166,17 @@ export default function VacationPlanner() {
       allHolidays,
       year,
       remoteWorkdayNumbers,
-      companyVacationDays,
-    )
+      companyVacationDays
+    );
 
-    setVacationPlan(result)
-    setIsCalculating(false)
-  }
+    setVacationPlan(result);
+    setIsCalculating(false);
+  };
 
   // Filter dates to only allow selecting dates in the selected year
-  const dateFilter = (date) => {
-    return date.getFullYear() !== year
-  }
+  const dateFilter = (date: Date): boolean => {
+    return date.getFullYear() !== year;
+  };
 
   return (
     <div className="space-y-8">
@@ -158,7 +191,9 @@ export default function VacationPlanner() {
                 min="1"
                 max="100"
                 value={remainingDays}
-                onChange={(e) => setRemainingDays(Number.parseInt(e.target.value) || 0)}
+                onChange={(e) =>
+                  setRemainingDays(Number.parseInt(e.target.value) || 0)
+                }
               />
             </div>
 
@@ -170,7 +205,9 @@ export default function VacationPlanner() {
                 min={currentYear}
                 max="2030"
                 value={year}
-                onChange={(e) => setYear(Number.parseInt(e.target.value) || currentYear)}
+                onChange={(e) =>
+                  setYear(Number.parseInt(e.target.value) || currentYear)
+                }
               />
             </div>
 
@@ -206,9 +243,14 @@ export default function VacationPlanner() {
                         <Checkbox
                           id={`workday-${day}`}
                           checked={checked}
-                          onCheckedChange={() => handleWorkdayChange(day)}
+                          onCheckedChange={() =>
+                            handleWorkdayChange(day as DayKey)
+                          }
                         />
-                        <Label htmlFor={`workday-${day}`} className="capitalize">
+                        <Label
+                          htmlFor={`workday-${day}`}
+                          className="capitalize"
+                        >
                           {day}
                         </Label>
                       </div>
@@ -224,13 +266,18 @@ export default function VacationPlanner() {
                       <Checkbox
                         id="consider-remote"
                         checked={considerRemoteWork}
-                        onCheckedChange={() => setConsiderRemoteWork(!considerRemoteWork)}
+                        onCheckedChange={() =>
+                          setConsiderRemoteWork(!considerRemoteWork)
+                        }
                       />
-                      <Label htmlFor="consider-remote">Consider remote work days during vacation planning</Label>
+                      <Label htmlFor="consider-remote">
+                        Consider remote work days during vacation planning
+                      </Label>
                     </div>
                     <p className="text-sm text-muted-foreground mb-4">
-                      When enabled, the optimizer will prioritize taking vacation on non-remote workdays, as you can
-                      work remotely while traveling.
+                      When enabled, the optimizer will prioritize taking
+                      vacation on non-remote workdays, as you can work remotely
+                      while traveling.
                     </p>
                   </div>
 
@@ -242,12 +289,18 @@ export default function VacationPlanner() {
                           <Checkbox
                             id={`remote-${day}`}
                             checked={checked}
-                            disabled={!workdays[day]}
-                            onCheckedChange={() => handleRemoteWorkdayChange(day)}
+                            disabled={!workdays[day as DayKey]}
+                            onCheckedChange={() =>
+                              handleRemoteWorkdayChange(day as DayKey)
+                            }
                           />
                           <Label
                             htmlFor={`remote-${day}`}
-                            className={`capitalize ${!workdays[day] ? "text-muted-foreground" : ""}`}
+                            className={`capitalize ${
+                              !workdays[day as DayKey]
+                                ? "text-muted-foreground"
+                                : ""
+                            }`}
                           >
                             {day}
                           </Label>
@@ -262,29 +315,39 @@ export default function VacationPlanner() {
                 <div className="grid gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Add company-mandated vacation days that will be automatically included in your vacation plan.
+                      Add company-mandated vacation days that will be
+                      automatically included in your vacation plan.
                     </p>
                   </div>
 
                   <div className="grid gap-4">
                     <div className="flex flex-col md:flex-row gap-4">
                       <div className="flex-1">
-                        <Label htmlFor="company-vacation-date" className="mb-2 block">
+                        <Label
+                          htmlFor="company-vacation-date"
+                          className="mb-2 block"
+                        >
                           Date
                         </Label>
                         <Calendar
                           mode="single"
                           selected={selectedDate}
-                          onSelect={setSelectedDate}
+                          onSelect={setSelectedDate as SelectSingleEventHandler}
                           disabled={dateFilter}
                           className="rounded-md border"
                         />
                       </div>
                       <div className="md:w-1/4">
-                        <Label htmlFor="company-vacation-duration" className="mb-2 block">
+                        <Label
+                          htmlFor="company-vacation-duration"
+                          className="mb-2 block"
+                        >
                           Duration
                         </Label>
-                        <Select value={selectedDuration} onValueChange={setSelectedDuration}>
+                        <Select
+                          value={selectedDuration}
+                          onValueChange={setSelectedDuration}
+                        >
                           <SelectTrigger id="company-vacation-duration">
                             <SelectValue placeholder="Duration" />
                           </SelectTrigger>
@@ -293,7 +356,11 @@ export default function VacationPlanner() {
                             <SelectItem value="1">Full day (1.0)</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button onClick={addCompanyVacationDay} className="w-full mt-4" disabled={!selectedDate}>
+                        <Button
+                          onClick={addCompanyVacationDay}
+                          className="w-full mt-4"
+                          disabled={!selectedDate}
+                        >
                           Add Company Vacation Day
                         </Button>
                       </div>
@@ -301,17 +368,26 @@ export default function VacationPlanner() {
 
                     {companyVacationDays.length > 0 && (
                       <div className="mt-4">
-                        <Label className="mb-2 block">Added Company Vacation Days:</Label>
+                        <Label className="mb-2 block">
+                          Added Company Vacation Days:
+                        </Label>
                         <div className="flex flex-wrap gap-2">
                           {companyVacationDays.map((day) => (
-                            <Badge key={day.date} variant="outline" className="flex items-center gap-1 py-1.5">
-                              {format(new Date(day.date), "MMM d, yyyy")} ({day.duration} day
+                            <Badge
+                              key={day.date}
+                              variant="outline"
+                              className="flex items-center gap-1 py-1.5"
+                            >
+                              {format(new Date(day.date), "MMM d, yyyy")} (
+                              {day.duration} day
                               {day.duration !== 1 ? "s" : ""})
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-4 w-4 p-0 ml-1"
-                                onClick={() => removeCompanyVacationDay(day.date)}
+                                onClick={() =>
+                                  removeCompanyVacationDay(day.date)
+                                }
                               >
                                 <X className="h-3 w-3" />
                               </Button>
@@ -326,7 +402,9 @@ export default function VacationPlanner() {
             </Tabs>
 
             <Button onClick={calculateVacationPlan} disabled={isCalculating}>
-              {isCalculating ? "Calculating..." : "Calculate Optimal Vacation Days"}
+              {isCalculating
+                ? "Calculating..."
+                : "Calculate Optimal Vacation Days"}
             </Button>
           </div>
         </CardContent>
@@ -334,5 +412,5 @@ export default function VacationPlanner() {
 
       {vacationPlan && <VacationResults plan={vacationPlan} />}
     </div>
-  )
+  );
 }

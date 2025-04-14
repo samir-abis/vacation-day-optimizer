@@ -13,7 +13,7 @@ import {
 // These can be adjusted to fine-tune the optimization
 const EFFICIENCY_WEIGHT = 1.5; // Prioritize getting more days off per vacation day used
 const SHORT_GAP_WEIGHT = 1.0; // Prioritize using fewer vacation days (filling shorter gaps)
-const TOTAL_LENGTH_WEIGHT = 0.5; // Slightly favor longer resulting breaks
+const TOTAL_LENGTH_WEIGHT = 10; // Favor longer resulting breaks
 const EARLY_MONTH_PENALTY_FACTOR = 0.05; // Slightly deprioritize very early months if budget is limited
 const HOLIDAY_INCLUSION_BONUS = 1.2; // Extra points for periods that include a public holiday
 const REMOTE_DAY_INCLUSION_BONUS = 2; // Bonus for each remote day included in the off-period

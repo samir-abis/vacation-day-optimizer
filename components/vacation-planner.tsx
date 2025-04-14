@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,6 +14,20 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
+import {
   germanStates,
   getNationalHolidays,
   getRegionalHolidays,
@@ -24,9 +38,9 @@ import VacationResults from "./vacation-results";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
-import { X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { CalendarIcon, Trash2 } from "lucide-react";
 import { SelectSingleEventHandler } from "react-day-picker";
+import { cn } from "@/lib/utils";
 
 // Helper function to get YYYY-MM-DD string based on LOCAL date components
 function getLocalISODateString(date: Date): string {
@@ -85,6 +99,7 @@ export default function VacationPlanner() {
   >([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedDuration, setSelectedDuration] = useState<string>("1");
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   const handleWorkdayChange = (day: DayKey) => {
     setWorkdays((prev) => ({
@@ -129,6 +144,7 @@ export default function VacationPlanner() {
         },
       ]);
       setSelectedDate(undefined);
+      setIsCalendarOpen(false); // Close popover after adding
     }
   };
 
@@ -195,237 +211,270 @@ export default function VacationPlanner() {
 
   return (
     <div className="space-y-8">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid gap-6">
-            <div className="grid gap-2">
-              <Label htmlFor="remaining-days">
-                Vacation Days Available for Planning
+      {/* Configuration Section */}
+      <div className="space-y-6 rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+        <h2 className="text-2xl font-semibold leading-none tracking-tight mb-4">
+          Configure Your Vacation Plan
+        </h2>
+        {/* Initial Settings Group */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="remaining-days">Vacation Budget</Label>
+            <Input
+              id="remaining-days"
+              type="number"
+              min="1"
+              max="100"
+              value={remainingDays}
+              onChange={(e) =>
+                setRemainingDays(Number.parseInt(e.target.value) || 0)
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="year">Year</Label>
+            <Input
+              id="year"
+              type="number"
+              min={currentYear}
+              max="2030"
+              value={year}
+              onChange={(e) =>
+                setYear(Number.parseInt(e.target.value) || currentYear)
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="state">Federal State</Label>
+            <Select value={selectedState} onValueChange={setSelectedState}>
+              <SelectTrigger id="state">
+                <SelectValue placeholder="Select your federal state" />
+              </SelectTrigger>
+              <SelectContent>
+                {germanStates.map((state) => (
+                  <SelectItem key={state.value} value={state.value}>
+                    {state.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <Separator />
+
+        <Tabs defaultValue="workdays">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="workdays">Workdays</TabsTrigger>
+            <TabsTrigger value="remote">Remote Work</TabsTrigger>
+            <TabsTrigger value="company">Company Vacation</TabsTrigger>
+          </TabsList>
+
+          {/* Workdays Tab */}
+          <TabsContent value="workdays" className="pt-4">
+            <div className="space-y-4">
+              <Label className="text-base font-medium">
+                Select your regular working days
               </Label>
-              <Input
-                id="remaining-days"
-                type="number"
-                min="1"
-                max="100"
-                value={remainingDays}
-                onChange={(e) =>
-                  setRemainingDays(Number.parseInt(e.target.value) || 0)
-                }
-              />
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                {Object.entries(workdays).map(([day, checked]) => (
+                  <div key={day} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`workday-${day}`}
+                      checked={checked}
+                      onCheckedChange={() => handleWorkdayChange(day as DayKey)}
+                    />
+                    <Label htmlFor={`workday-${day}`} className="capitalize">
+                      {day}
+                    </Label>
+                  </div>
+                ))}
+              </div>
             </div>
+          </TabsContent>
 
-            <div className="grid gap-2">
-              <Label htmlFor="year">Year</Label>
-              <Input
-                id="year"
-                type="number"
-                min={currentYear}
-                max="2030"
-                value={year}
-                onChange={(e) =>
-                  setYear(Number.parseInt(e.target.value) || currentYear)
-                }
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="state">Federal State</Label>
-              <Select value={selectedState} onValueChange={setSelectedState}>
-                <SelectTrigger id="state">
-                  <SelectValue placeholder="Select your federal state" />
-                </SelectTrigger>
-                <SelectContent>
-                  {germanStates.map((state) => (
-                    <SelectItem key={state.value} value={state.value}>
-                      {state.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Tabs defaultValue="workdays">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="workdays">Workdays</TabsTrigger>
-                <TabsTrigger value="remote">Remote Work</TabsTrigger>
-                <TabsTrigger value="company">Company Vacation</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="workdays" className="pt-4">
-                <div className="grid gap-2">
-                  <Label>Select your workdays</Label>
-                  <div className="flex flex-wrap gap-4">
-                    {Object.entries(workdays).map(([day, checked]) => (
-                      <div key={day} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`workday-${day}`}
-                          checked={checked}
-                          onCheckedChange={() =>
-                            handleWorkdayChange(day as DayKey)
-                          }
-                        />
-                        <Label
-                          htmlFor={`workday-${day}`}
-                          className="capitalize"
-                        >
-                          {day}
-                        </Label>
-                      </div>
-                    ))}
+          {/* Remote Work Tab */}
+          <TabsContent value="remote" className="pt-4">
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-start space-x-2">
+                  <Checkbox
+                    id="consider-remote"
+                    checked={considerRemoteWork}
+                    onCheckedChange={() =>
+                      setConsiderRemoteWork(!considerRemoteWork)
+                    }
+                    className="mt-1"
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="consider-remote" className="font-medium">
+                      Consider remote work days during planning
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Prioritize vacation on non-remote workdays.
+                    </p>
                   </div>
                 </div>
-              </TabsContent>
+              </div>
 
-              <TabsContent value="remote" className="pt-4">
-                <div className="grid gap-4">
-                  <div>
-                    <div className="flex items-center space-x-2 mb-4">
+              <Separator />
+
+              <div className="space-y-4">
+                <Label className="text-base font-medium">
+                  Select your remote workdays
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Only applicable if the day is also selected as a workday.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                  {Object.entries(remoteWorkdays).map(([day, checked]) => (
+                    <div key={day} className="flex items-center space-x-2">
                       <Checkbox
-                        id="consider-remote"
-                        checked={considerRemoteWork}
+                        id={`remote-${day}`}
+                        checked={checked}
+                        disabled={!workdays[day as DayKey]}
                         onCheckedChange={() =>
-                          setConsiderRemoteWork(!considerRemoteWork)
+                          handleRemoteWorkdayChange(day as DayKey)
                         }
                       />
-                      <Label htmlFor="consider-remote">
-                        Consider remote work days during vacation planning
+                      <Label
+                        htmlFor={`remote-${day}`}
+                        className={`capitalize ${
+                          !workdays[day as DayKey]
+                            ? "text-muted-foreground"
+                            : ""
+                        }`}
+                      >
+                        {day}
                       </Label>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      When enabled, the optimizer will prioritize taking
-                      vacation on non-remote workdays, as you can work remotely
-                      while traveling.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Select your remote workdays</Label>
-                    <div className="flex flex-wrap gap-4">
-                      {Object.entries(remoteWorkdays).map(([day, checked]) => (
-                        <div key={day} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`remote-${day}`}
-                            checked={checked}
-                            disabled={!workdays[day as DayKey]}
-                            onCheckedChange={() =>
-                              handleRemoteWorkdayChange(day as DayKey)
-                            }
-                          />
-                          <Label
-                            htmlFor={`remote-${day}`}
-                            className={`capitalize ${
-                              !workdays[day as DayKey]
-                                ? "text-muted-foreground"
-                                : ""
-                            }`}
-                          >
-                            {day}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              </TabsContent>
+              </div>
+            </div>
+          </TabsContent>
 
-              <TabsContent value="company" className="pt-4">
-                <div className="grid gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Add company-mandated vacation days that will be
-                      automatically included in your vacation plan.
-                    </p>
+          {/* Company Vacation Tab */}
+          <TabsContent value="company" className="pt-4">
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-base font-medium">
+                  Mandatory Company Vacation
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Add company-mandated vacation days. These will be deducted
+                  first and included in the plan.
+                </p>
+              </div>
+
+              <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {selectedDate
+                      ? format(selectedDate, "PPP")
+                      : "Add Company Vacation Day"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-4 space-y-4">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={setSelectedDate as SelectSingleEventHandler}
+                    disabled={dateFilter}
+                    initialFocus
+                  />
+                  <div className="space-y-2">
+                    <Label htmlFor="company-vacation-duration">Duration</Label>
+                    <Select
+                      value={selectedDuration}
+                      onValueChange={setSelectedDuration}
+                    >
+                      <SelectTrigger id="company-vacation-duration">
+                        <SelectValue placeholder="Duration" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0.5">Half day (0.5)</SelectItem>
+                        <SelectItem value="1">Full day (1.0)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
+                  <Button
+                    onClick={addCompanyVacationDay}
+                    disabled={!selectedDate}
+                    className="w-full"
+                  >
+                    Add Day
+                  </Button>
+                </PopoverContent>
+              </Popover>
 
-                  <div className="grid gap-4">
-                    <div className="flex flex-col md:flex-row gap-4">
-                      <div className="flex-1">
-                        <Label
-                          htmlFor="company-vacation-date"
-                          className="mb-2 block"
-                        >
-                          Date
-                        </Label>
-                        <Calendar
-                          mode="single"
-                          selected={selectedDate}
-                          onSelect={setSelectedDate as SelectSingleEventHandler}
-                          disabled={dateFilter}
-                          className="rounded-md border"
-                        />
-                      </div>
-                      <div className="md:w-1/4">
-                        <Label
-                          htmlFor="company-vacation-duration"
-                          className="mb-2 block"
-                        >
-                          Duration
-                        </Label>
-                        <Select
-                          value={selectedDuration}
-                          onValueChange={setSelectedDuration}
-                        >
-                          <SelectTrigger id="company-vacation-duration">
-                            <SelectValue placeholder="Duration" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="0.5">Half day (0.5)</SelectItem>
-                            <SelectItem value="1">Full day (1.0)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          onClick={addCompanyVacationDay}
-                          className="w-full mt-4"
-                          disabled={!selectedDate}
-                        >
-                          Add Company Vacation Day
-                        </Button>
-                      </div>
-                    </div>
-
-                    {companyVacationDays.length > 0 && (
-                      <div className="mt-4">
-                        <Label className="mb-2 block">
-                          Added Company Vacation Days:
-                        </Label>
-                        <div className="flex flex-wrap gap-2">
-                          {companyVacationDays.map((day) => (
-                            <Badge
-                              key={day.date}
-                              variant="outline"
-                              className="flex items-center gap-1 py-1.5"
-                            >
-                              {format(new Date(day.date), "MMM d, yyyy")} (
-                              {day.duration} day
-                              {day.duration !== 1 ? "s" : ""})
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-4 w-4 p-0 ml-1"
-                                onClick={() =>
-                                  removeCompanyVacationDay(day.date)
-                                }
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </Badge>
+              {companyVacationDays.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-base font-medium">Added Days</Label>
+                  {/* Use Card styling for the table container */}
+                  <div className="rounded-lg border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead className="text-center">
+                            Duration
+                          </TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {companyVacationDays
+                          .sort(
+                            (a, b) =>
+                              new Date(a.date).getTime() -
+                              new Date(b.date).getTime()
+                          ) // Sort days chronologically
+                          .map((day) => (
+                            <TableRow key={day.date}>
+                              <TableCell className="font-medium">
+                                {format(new Date(day.date), "PPP")}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {day.duration} day
+                                {day.duration !== 1 ? "s" : ""}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() =>
+                                    removeCompanyVacationDay(day.date)
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  <span className="sr-only">Remove</span>
+                                </Button>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </div>
-                      </div>
-                    )}
+                      </TableBody>
+                    </Table>
                   </div>
                 </div>
-              </TabsContent>
-            </Tabs>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
 
-            <Button onClick={calculateVacationPlan} disabled={isCalculating}>
-              {isCalculating
-                ? "Calculating..."
-                : "Calculate Optimal Vacation Days"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        <Separator />
+
+        <Button
+          onClick={calculateVacationPlan}
+          disabled={isCalculating}
+          className="w-full"
+          size="lg"
+        >
+          {isCalculating ? "Calculating..." : "Calculate Optimal Vacation Plan"}
+        </Button>
+      </div>
 
       {vacationPlan && <VacationResults plan={vacationPlan} />}
     </div>

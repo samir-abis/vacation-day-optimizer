@@ -1,12 +1,17 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DayProps, Day } from "react-day-picker";
+import { DayProps } from "react-day-picker";
 import { VacationPlan } from "@/lib/types";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import { Briefcase, CalendarDays, Building, Plane } from "lucide-react";
+import { useResponsiveCalendarMonths } from "@/hooks/use-responsive-calendar-months";
 
 // Helper function to get YYYY-MM-DD string based on LOCAL date components
 function getLocalISODateString(date: Date): string {
@@ -41,6 +46,31 @@ interface VacationResultsProps {
 // Define a custom interface extending DayProps
 interface CustomDayProps extends DayProps {
   className?: string;
+}
+
+// Component to display a single statistic
+function StatCard({
+  label,
+  value,
+  description,
+  className,
+}: {
+  label: string;
+  value: string | number;
+  description?: string;
+  className?: string;
+}) {
+  return (
+    <Card className={cn("p-4", className)}>
+      <div className="text-sm font-medium text-muted-foreground">{label}</div>
+      <div className="text-2xl font-bold mt-1">{value}</div>
+      {description && (
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {description}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 export default function VacationResults({ plan }: VacationResultsProps) {
@@ -123,8 +153,10 @@ export default function VacationResults({ plan }: VacationResultsProps) {
   }
 
   // Calculate cost of optimizer-planned days
-  const optimizedVacationDaysCost =
-    totalVacationDaysUsed - companyVacationDaysCost;
+  const optimizedVacationDaysCost = Math.max(
+    0,
+    totalVacationDaysUsed - companyVacationDaysCost
+  );
 
   // Efficiency calculation (based on optimizer-planned days cost)
   const efficiency =
@@ -163,8 +195,11 @@ export default function VacationResults({ plan }: VacationResultsProps) {
     // Check if the date is valid. The displayMonth check might be redundant.
     if (!date) {
       // Return a basic div or null if the date is invalid
-      return <div></div>;
+      return <div className="w-full h-full"></div>;
     }
+
+    // Check if the date is outside the current display month
+    const isOutsideMonth = displayMonth.getMonth() !== date.getMonth();
 
     // Get the LOCAL date string for comparison
     const currentLocalISODateString = getLocalISODateString(date);
@@ -175,200 +210,220 @@ export default function VacationResults({ plan }: VacationResultsProps) {
     const isCompanyVacationDay = companySet.has(currentLocalISODateString);
 
     let dayClassName = "";
-    let holidayName = "";
-    let label = "";
+    let tooltipContent = "";
+    let IconComponent: React.ElementType | null = null;
 
     if (isHoliday) {
-      dayClassName = "bg-red-100 text-red-800";
-      holidayName = holidayNamesByDate[currentLocalISODateString] || ""; // Use local date string for lookup
-      label = holidayName;
+      dayClassName = "bg-red-100 text-red-900 hover:bg-red-200";
+      tooltipContent =
+        holidayNamesByDate[currentLocalISODateString] || "Holiday"; // Use local date string for lookup
+      IconComponent = CalendarDays;
     } else if (isCompanyVacationDay) {
-      dayClassName = "bg-purple-100 text-purple-800";
-      label = "Company";
+      dayClassName = "bg-purple-100 text-purple-900 hover:bg-purple-200";
+      tooltipContent = "Company Vacation";
+      IconComponent = Building;
     } else if (isVacationDay) {
       // Ensure company vacation days are not double-counted visually
-      if (!isCompanyVacationDay) {
-        dayClassName = "bg-green-100 text-green-800";
-      }
+      dayClassName = "bg-green-100 text-green-900 hover:bg-green-200";
+      tooltipContent = "Planned Vacation";
+      IconComponent = Plane;
     } else if (isRemoteWorkday) {
-      dayClassName = "bg-blue-100 text-blue-800";
-      label = "Remote";
-    }
-
-    if (label.length > 8) {
-      label = label.substring(0, 6) + "...";
+      dayClassName = "bg-blue-100 text-blue-900 hover:bg-blue-200";
+      tooltipContent = "Remote Workday";
+      IconComponent = Briefcase;
     }
 
     return (
       <div
-        {...restProps}
-        className={`flex flex-col items-center justify-center w-full h-full p-1 text-center ${dayClassName} ${
-          propsClassName || ""
-        }`}
+        title={tooltipContent} // Simple browser tooltip
+        className={cn(
+          "flex flex-col items-center justify-center w-full h-14 p-1 text-center relative rounded-md transition-colors",
+          dayClassName,
+          isOutsideMonth ? "text-muted-foreground opacity-50" : "",
+          propsClassName
+        )}
       >
-        <span className="text-xs">{date.getDate()}</span>
-        {label && (
-          <span className="text-[9px] text-center mt-0.5 leading-tight break-words max-w-full">
-            {label}
-          </span>
+        <span className="text-xs font-medium">{date.getDate()}</span>
+        {IconComponent && (
+          <IconComponent className="h-3.5 w-3.5 mt-0.5 opacity-80" />
         )}
       </div>
     );
   };
 
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Optimal Vacation Plan</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4">
-            <div
-              className={`grid grid-cols-1 md:grid-cols-${
-                companyVacationDaysCost > 0 ? 6 : 5
-              } gap-4`}
-            >
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">
-                  Planned Days Used (from Budget)
-                </div>
-                <div className="text-2xl font-bold">
-                  {optimizedVacationDaysCost}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  (Budget: {optimizerBudget})
-                </div>
-              </div>
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">
-                  Remaining Days from Planning Budget
-                </div>
-                <div className="text-2xl font-bold">
-                  {remainingVacationDays}
-                </div>
-              </div>
-              {companyVacationDaysCost > 0 && (
-                <div className="p-4 border rounded-lg">
-                  <div className="text-sm text-muted-foreground">
-                    Company Vacation Cost
-                  </div>
-                  <div className="text-2xl font-bold">
-                    {companyVacationDaysCost}
-                  </div>
-                </div>
-              )}
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">
-                  Total Vacation Cost (Planned + Company)
-                </div>
-                <div className="text-2xl font-bold">
-                  {totalVacationDaysUsed}
-                </div>
-              </div>
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">
-                  Total Days Off
-                </div>
-                <div className="text-2xl font-bold">{totalDaysOff}</div>
-              </div>
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">
-                  Efficiency Ratio (Planned Days)
-                </div>
-                <div className="text-2xl font-bold">
-                  {efficiency.toFixed(2)}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  days off per planned vacation day
-                </div>
-              </div>
-            </div>
+  // Determine the initial month for the calendar
+  const initialCalendarDate = () => {
+    if (plan.vacationPeriods.length > 0) {
+      // Use the start date of the first period
+      return new Date(plan.vacationPeriods[0].startDate);
+    }
+    // Default to January of the year derived from the first holiday or current year
+    const year =
+      plan.holidays && plan.holidays.length > 0
+        ? new Date(plan.holidays[0].date).getFullYear()
+        : new Date().getFullYear();
+    return new Date(year, 0, 1); // January 1st
+  };
 
-            <Tabs defaultValue={monthsWithVacations[0]?.toString() || "all"}>
-              <TabsList className="mb-4 flex flex-wrap">
-                <TabsTrigger value="all">All Periods</TabsTrigger>
-                {monthsWithVacations.map((month) => (
-                  <TabsTrigger key={month} value={month.toString()}>
+  // State for the currently displayed month in the calendar
+  const [currentDisplayMonth, setCurrentDisplayMonth] = useState(() =>
+    initialCalendarDate()
+  );
+
+  // Use the hook to get the ref and the calculated number of months
+  const { containerRef, numberOfMonths } = useResponsiveCalendarMonths({
+    // Optional: Adjust monthWidth estimate if needed (default is 330)
+    // monthWidth: 350,
+    maxMonths: 3, // Still limit to a maximum of 3 months
+  });
+
+  return (
+    <div className="space-y-8">
+      {/* Results Summary Section */}
+      <div className="space-y-6 rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+        <h2 className="text-2xl font-semibold leading-none tracking-tight mb-4">
+          Your Optimal Vacation Plan Summary
+        </h2>
+        {/* Summary Statistics Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <StatCard
+            label="Planned Days Used (Budget)"
+            value={optimizedVacationDaysCost}
+            description={`Budget: ${optimizerBudget}`}
+          />
+          <StatCard
+            label="Remaining Budget Days"
+            value={remainingVacationDays}
+          />
+          {companyVacationDaysCost > 0 && (
+            <StatCard
+              label="Company Vacation Cost"
+              value={companyVacationDaysCost}
+            />
+          )}
+          <StatCard
+            label="Total Vacation Cost"
+            value={totalVacationDaysUsed}
+            description="Planned + Company"
+          />
+          <StatCard label="Total Days Off" value={totalDaysOff} />
+          <StatCard
+            label="Efficiency Ratio (Planned)"
+            value={efficiency.toFixed(2)}
+            description="Days off per planned day"
+          />
+        </div>
+
+        <Separator />
+
+        {/* Vacation Periods Section */}
+        <div>
+          <h3 className="text-xl font-semibold mb-4">Vacation Periods</h3>
+          <Tabs defaultValue={monthsWithVacations[0]?.toString() || "all"}>
+            <TabsList className="mb-4 flex flex-wrap h-auto justify-start">
+              <TabsTrigger value="all">All Periods</TabsTrigger>
+              {monthsWithVacations.map((month) => (
+                <TabsTrigger key={month} value={month.toString()}>
+                  {new Date(0, month).toLocaleString("default", {
+                    month: "long",
+                  })}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            <TabsContent value="all">
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">All Vacation Periods</h3>
+                {vacationPeriods.map((period, index: number) => (
+                  <VacationPeriodCard key={index} period={period} />
+                ))}
+              </div>
+            </TabsContent>
+
+            {monthsWithVacations.map((month) => (
+              <TabsContent key={month} value={month.toString()}>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">
                     {new Date(0, month).toLocaleString("default", {
                       month: "long",
-                    })}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-
-              <TabsContent value="all">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">All Vacation Periods</h3>
-                  {vacationPeriods.map((period, index: number) => (
+                    })}{" "}
+                    Vacation Periods
+                  </h3>
+                  {periodsByMonth[month].map((period, index: number) => (
                     <VacationPeriodCard key={index} period={period} />
                   ))}
                 </div>
               </TabsContent>
+            ))}
+          </Tabs>
+        </div>
+      </div>
 
-              {monthsWithVacations.map((month) => (
-                <TabsContent key={month} value={month.toString()}>
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">
-                      {new Date(0, month).toLocaleString("default", {
-                        month: "long",
-                      })}{" "}
-                      Vacation Periods
-                    </h3>
-                    {periodsByMonth[month].map((period, index: number) => (
-                      <VacationPeriodCard key={index} period={period} />
-                    ))}
-                  </div>
-                </TabsContent>
-              ))}
-            </Tabs>
+      {/* Calendar View Section */}
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold leading-none tracking-tight">
+          Calendar View
+        </h2>
+        {/* Legend */}
+        <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-2">
+          <div className="flex items-center">
+            <span className="inline-block w-3 h-3 bg-green-100 rounded-sm mr-1.5"></span>
+            Planned Vacation
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Calendar View</CardTitle>
-          <div className="text-sm text-muted-foreground flex flex-wrap gap-3">
-            <div className="flex items-center">
-              <span className="inline-block w-3 h-3 bg-green-100 rounded-full mr-1"></span>{" "}
-              Vacation Days
-            </div>
-            <div className="flex items-center">
-              <span className="inline-block w-3 h-3 bg-red-100 rounded-full mr-1"></span>{" "}
-              Holidays
-            </div>
-            <div className="flex items-center">
-              <span className="inline-block w-3 h-3 bg-blue-100 rounded-full mr-1"></span>{" "}
-              Remote Work
-            </div>
-            <div className="flex items-center">
-              <span className="inline-block w-3 h-3 bg-purple-100 rounded-full mr-1"></span>{" "}
-              Company Vacation
-            </div>
+          <div className="flex items-center">
+            <span className="inline-block w-3 h-3 bg-red-100 rounded-sm mr-1.5"></span>
+            Holiday
           </div>
-        </CardHeader>
-        <CardContent>
-          <div>
-            <Calendar
-              mode="multiple"
-              selected={parsedRecommendedDays}
-              className="rounded-md border w-full"
-              classNames={{
-                months: "flex flex-col sm:flex-row sm:justify-between w-full",
-                month: "space-y-4 flex-1",
-                day: "w-full",
-                head_cell:
-                  "w-full text-center text-muted-foreground rounded-md font-normal text-[0.8rem]",
-                cell: "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 flex-1 h-14",
-              }}
-              components={{
-                Day: renderDay,
-              }}
-            />
+          <div className="flex items-center">
+            <span className="inline-block w-3 h-3 bg-blue-100 rounded-sm mr-1.5"></span>
+            Remote Work
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex items-center">
+            <span className="inline-block w-3 h-3 bg-purple-100 rounded-sm mr-1.5"></span>
+            Company Vacation
+          </div>
+        </div>
+        {/* Container div to measure for responsive months */}
+        <div
+          ref={containerRef}
+          className="w-full overflow-hidden flex justify-center"
+        >
+          {/* Calendar is now inside the measured container */}
+          <Calendar
+            mode="multiple"
+            selected={parsedRecommendedDays} // Still need selected for potential external interactions
+            month={currentDisplayMonth} // Use state for displayed month
+            onMonthChange={setCurrentDisplayMonth} // Update state on navigation
+            numberOfMonths={numberOfMonths} // Use calculated number of months
+            pagedNavigation
+            className="rounded-md border p-3 bg-card text-card-foreground shadow-sm" // Apply card-like styling here
+            classNames={{
+              months:
+                "flex flex-col items-center sm:flex-row sm:items-start space-y-4 sm:space-x-4 sm:space-y-0", // Center items vertically (mobile), align start horizontally (desktop)
+              month: "space-y-4",
+              caption_label: "text-base font-medium",
+              nav_button: "h-8 w-8",
+              nav_button_previous: "absolute left-1 top-1",
+              nav_button_next: "absolute right-1 top-1",
+              head_cell:
+                "w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-muted-foreground rounded-md font-normal text-[0.8rem]",
+              cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14",
+              day: "h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 p-0 font-normal aria-selected:opacity-100",
+              day_selected:
+                "bg-transparent text-primary-foreground hover:bg-transparent focus:bg-transparent", // Let custom renderer handle selected style
+              day_today: "bg-accent text-accent-foreground",
+              day_outside: "text-muted-foreground opacity-50",
+              day_disabled: "text-muted-foreground opacity-50",
+              day_range_middle:
+                "aria-selected:bg-accent aria-selected:text-accent-foreground",
+              day_hidden: "invisible",
+            }}
+            components={{
+              Day: renderDay,
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -389,49 +444,69 @@ function VacationPeriodCard({ period }: VacationPeriodCardProps) {
       : 0;
 
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <div className="font-medium flex items-center gap-2">
-              {format(startDate, "MMMM d, yyyy")} -{" "}
-              {format(endDate, "MMMM d, yyyy")}
+    <Card className="overflow-hidden">
+      <CardContent className="p-4 md:p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+          {/* Left Side: Dates & Stats */}
+          <div className="flex-1 space-y-1">
+            <div className="font-semibold text-lg flex items-center gap-2 flex-wrap">
+              <span>
+                {format(startDate, "MMM d, yyyy")} -{" "}
+                {format(endDate, "MMM d, yyyy")}
+              </span>
               {period.isCompanyVacation && (
-                <Badge variant="outline" className="bg-purple-50">
-                  Company Vacation
+                <Badge
+                  variant="outline"
+                  className="bg-purple-100 text-purple-900 border-purple-200"
+                >
+                  <Building className="h-3 w-3 mr-1" /> Company
                 </Badge>
               )}
             </div>
             <div className="text-sm text-muted-foreground">
-              {period.totalDays} days off ({period.vacationDaysUsed} vacation
-              days used)
-              <span className="ml-2 font-medium">
+              <span className="font-medium text-foreground">
+                {period.totalDays} days off
+              </span>
+              <span> using </span>
+              <span className="font-medium text-foreground">
+                {period.vacationDaysUsed} vacation days
+              </span>
+              <span className="mx-1">·</span>
+              <span className="font-medium">
                 Efficiency: {efficiency.toFixed(2)}
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {period.includes.map(
-              (item: { type: string; name?: string }, i: number) => (
-                <Badge
-                  key={i}
-                  variant={
-                    item.type === "holiday"
-                      ? "secondary"
-                      : item.type === "company"
-                      ? "outline"
-                      : "outline"
-                  }
-                  className={item.type === "company" ? "bg-purple-50" : ""}
-                >
-                  {item.type === "holiday"
-                    ? `${item.name} (Holiday)`
-                    : item.type === "company"
-                    ? "Company Vacation"
-                    : "Weekend"}
-                </Badge>
-              )
-            )}
+
+          {/* Right Side: Included Days Badges */}
+          <div className="flex flex-wrap gap-1.5 mt-2 sm:mt-0">
+            {period.includes.map((item, i) => (
+              <Badge
+                key={i}
+                variant="secondary"
+                className={cn(
+                  "font-normal",
+                  item.type === "holiday" &&
+                    "bg-red-100 text-red-900 border-red-200",
+                  item.type === "company" &&
+                    "bg-purple-100 text-purple-900 border-purple-200",
+                  item.type === "weekend" &&
+                    "bg-gray-100 text-gray-800 border-gray-200"
+                )}
+              >
+                {item.type === "holiday" && (
+                  <CalendarDays className="h-3 w-3 mr-1" />
+                )}
+                {item.type === "company" && (
+                  <Building className="h-3 w-3 mr-1" />
+                )}
+                {item.type === "holiday"
+                  ? item.name // Show holiday name
+                  : item.type === "company"
+                  ? "Company Day"
+                  : "Weekend"}
+              </Badge>
+            ))}
           </div>
         </div>
       </CardContent>

@@ -1,4 +1,4 @@
-import { Holiday } from "./holidays";
+import { Holiday, getNationalHolidays, getRegionalHolidays } from "./holidays";
 
 export interface VacationPeriod {
   startDate: Date;
@@ -19,6 +19,9 @@ export interface VacationPlan {
   recommendedDays: string[];
   totalDaysOff: number;
   remainingVacationDays: number;
+  optimizerBudget: number;
+  totalVacationDaysUsed: number;
+  companyVacationDaysCost: number;
   vacationPeriods: {
     startDate: string;
     endDate: string;
@@ -35,80 +38,142 @@ export interface VacationPlan {
 export function calculateOptimalVacationDays(
   remainingVacationDays: number,
   workdays: number[],
-  holidays: Holiday[],
+  initialHolidays: Holiday[],
   year: number,
   remoteWorkdays: number[] = [],
-  companyVacationDays: CompanyVacationDay[] = []
+  companyVacationDays: CompanyVacationDay[] = [],
+  state: string | null = null
 ): VacationPlan {
+  console.log("[Optimizer] Received remoteWorkdays:", remoteWorkdays);
+  console.log(
+    "[Optimizer] Received companyVacationDays (Input):",
+    companyVacationDays
+  );
   const today = new Date();
-  const endOfYear = new Date(year, 11, 31);
+  const calculationEndDate = new Date(year + 1, 0, 15);
 
-  // Set the start date to today if the year is the current year, otherwise January 1st
   const startDate = year === today.getFullYear() ? today : new Date(year, 0, 1);
 
-  // Get all workdays until the end of the year
-  const allWorkdays = getAllWorkdays(startDate, endOfYear, workdays);
+  let allHolidays = [...initialHolidays];
 
-  // Get all holidays dates
-  const holidayDates = holidays.map((h) => h.date.toISOString().split("T")[0]);
+  if (state) {
+    allHolidays = allHolidays.concat(getRegionalHolidays(state, year));
+  }
 
-  // Filter out workdays that are holidays
+  const nextYearNationalHolidays = getNationalHolidays(year + 1);
+  allHolidays = allHolidays.concat(nextYearNationalHolidays);
+
+  if (state) {
+    const nextYearRegionalHolidays = getRegionalHolidays(state, year + 1);
+    allHolidays = allHolidays.concat(nextYearRegionalHolidays);
+  }
+
+  const uniqueHolidaysMap = new Map<string, Holiday>();
+  allHolidays.forEach((h) =>
+    uniqueHolidaysMap.set(h.date.toISOString().split("T")[0], h)
+  );
+  const holidays = Array.from(uniqueHolidaysMap.values());
+  const relevantHolidays = holidays.filter(
+    (h) => h.date >= startDate && h.date <= calculationEndDate
+  );
+
+  const allWorkdays = getAllWorkdays(startDate, calculationEndDate, workdays);
+
+  const holidayDates = relevantHolidays.map(
+    (h) => h.date.toISOString().split("T")[0]
+  );
+  // Log the holiday dates being used for filtering workdays
+  console.log(
+    "[Optimizer] Holiday dates used for filtering workdays:",
+    holidayDates
+  );
+
   const workdaysWithoutHolidays = allWorkdays.filter(
     (day) => !holidayDates.includes(day.toISOString().split("T")[0])
   );
 
-  // Process company vacation days
   const companyVacationDatesInfo = processCompanyVacationDays(
     companyVacationDays,
     workdaysWithoutHolidays
   );
 
-  // Subtract company vacation days from remaining vacation days
-  const adjustedRemainingDays = Math.max(
-    0,
-    remainingVacationDays - companyVacationDatesInfo.totalDays
-  );
+  // The input 'remainingVacationDays' is now the budget for the optimizer.
+  const optimizerBudget = remainingVacationDays;
 
-  // Group holidays by month for better distribution
-  const holidaysByMonth = groupHolidaysByMonth(holidays);
+  const holidaysByMonth = groupHolidaysByMonth(relevantHolidays);
 
-  // Find optimal vacation periods with better distribution
   const vacationPeriods = findOptimalVacationPeriods(
     workdaysWithoutHolidays,
-    adjustedRemainingDays,
-    holidays,
+    optimizerBudget, // Use the direct budget for the optimizer
+    relevantHolidays,
     workdays,
     holidaysByMonth,
     remoteWorkdays,
-    companyVacationDatesInfo.dates as Date[] // Type assertion
+    companyVacationDatesInfo.dates as Date[]
   );
 
-  // Add company vacation periods to the vacation periods
-  const allVacationPeriods = [
+  const allVacationPeriodsRaw = [
     ...vacationPeriods,
     ...companyVacationDatesInfo.periods,
   ];
 
-  // Extract recommended vacation days (both user-selected and company-mandated)
+  const allVacationPeriods = allVacationPeriodsRaw.filter(
+    (period) => period.startDate.getFullYear() === year
+  );
+
+  // Calculate the number/cost of optimized days (excluding company days)
+  const optimizedVacationDaysCost = vacationPeriods.reduce(
+    (sum, period) => sum + period.vacationDays.length,
+    0
+  );
+
+  // Total cost is the sum of optimizer-chosen days + company days cost
+  const totalVacationCost =
+    optimizedVacationDaysCost + companyVacationDatesInfo.totalDays;
+
+  // Final remaining days = Initial budget - optimizer-chosen days
+  // (Company days cost doesn't affect the *remaining* from the planning budget)
+  const finalRemainingVacationDays =
+    optimizerBudget - optimizedVacationDaysCost;
+
   const recommendedDays = allVacationPeriods.flatMap((period) =>
     period.vacationDays.map((day: Date) => day.toISOString())
   );
 
-  // Calculate total days off (vacation days + weekends + holidays)
   const totalDaysOff = allVacationPeriods.reduce(
     (sum, period) => sum + period.totalDays,
     0
   );
 
-  // Get all remote workdays for the calendar view
-  const remoteWorkdayDates = workdaysWithoutHolidays
-    .filter((day) => isRemoteDay(day, remoteWorkdays))
+  const actualVacationDaysUsed = allVacationPeriods.reduce(
+    (sum, period) => sum + period.vacationDays.length,
+    0
+  );
+
+  const endOfYear = new Date(year, 11, 31);
+  const workdaysInYear = getAllWorkdays(startDate, endOfYear, workdays);
+  const remoteWorkdayDates = workdaysInYear
+    .filter(
+      (day) =>
+        isRemoteDay(day, remoteWorkdays) &&
+        !holidayDates.includes(day.toISOString().split("T")[0])
+    )
     .map((day) => day.toISOString());
 
-  return {
+  console.log(
+    "[Optimizer] Final remoteWorkdayDates:",
+    remoteWorkdayDates.slice(0, 10)
+  ); // Log first 10
+
+  const displayHolidays = holidays.filter((h) => h.date.getFullYear() === year);
+
+  const result: VacationPlan = {
     recommendedDays,
     totalDaysOff,
-    remainingVacationDays: remainingVacationDays - recommendedDays.length,
+    remainingVacationDays: finalRemainingVacationDays,
+    optimizerBudget: optimizerBudget,
+    totalVacationDaysUsed: totalVacationCost,
+    companyVacationDaysCost: companyVacationDatesInfo.totalDays,
     vacationPeriods: allVacationPeriods.map((period) => ({
       startDate: period.startDate.toISOString(),
       endDate: period.endDate.toISOString(),
@@ -117,18 +182,23 @@ export function calculateOptimalVacationDays(
       includes: period.includes,
       isCompanyVacation: period.isCompanyVacation || false,
     })),
-    holidays: holidays.map((h) => ({
+    holidays: displayHolidays.map((h) => ({
       date: h.date.toISOString(),
       name: h.name,
     })),
     remoteWorkdays: remoteWorkdayDates,
-    companyVacationDays: companyVacationDatesInfo.dates.map((d) =>
-      d.toISOString()
-    ),
+    companyVacationDays: companyVacationDatesInfo.dates
+      .filter((d) => d.getFullYear() === year)
+      .map((d) => d.toISOString()),
   };
+
+  console.log(
+    "[Optimizer] Final Plan companyVacationDays:",
+    result.companyVacationDays
+  );
+  return result;
 }
 
-// Process company vacation days
 function processCompanyVacationDays(
   companyVacationDays: CompanyVacationDay[],
   workdays: Date[]
@@ -148,52 +218,72 @@ function processCompanyVacationDays(
   const periods: VacationPeriod[] = [];
   let totalDays = 0;
 
-  // Process each company vacation day
+  const workdaysSet = new Set(
+    workdays.map((d) => d.toISOString().split("T")[0])
+  );
+
+  console.log(
+    `[Optimizer] processCompanyVacationDays: Processing ${companyVacationDays.length} input days against ${workdaysSet.size} workdays.`
+  );
+
   companyVacationDays.forEach((vacationDay) => {
-    const date = new Date(vacationDay.date);
+    // Directly parse the ISO string to avoid local timezone issues during Date creation
+    const year = parseInt(vacationDay.date.substring(0, 4), 10);
+    const month = parseInt(vacationDay.date.substring(5, 7), 10) - 1; // JS months are 0-indexed
+    const day = parseInt(vacationDay.date.substring(8, 10), 10);
+
+    // Create a Date object representing the START of the UTC day
+    const date = new Date(Date.UTC(year, month, day));
+
+    const dateStr = date.toISOString().split("T")[0]; // Get UTC date string YYYY-MM-DD
     const duration = vacationDay.duration;
 
-    // Check if this date is a workday
-    const isWorkdayDate = workdays.some(
-      (workday: Date) =>
-        workday.getFullYear() === date.getFullYear() &&
-        workday.getMonth() === date.getMonth() &&
-        workday.getDate() === date.getDate()
+    const isWorkdayCheck = workdaysSet.has(dateStr);
+    console.log(
+      `[Optimizer] processCompanyVacationDays Check: Input=${vacationDay.date}, CheckDateStr=${dateStr}, Duration=${duration}, IsWorkday=${isWorkdayCheck}`
     );
 
-    if (isWorkdayDate) {
+    if (isWorkdayCheck) {
+      // Store the consistent UTC start-of-day Date object
       companyVacationDatesMap.set(date.toISOString(), { date, duration });
       totalDays += duration;
 
-      // Create a period for this company vacation day
+      // Create period info (using the same UTC start-of-day date)
       periods.push({
         startDate: date,
         endDate: date,
         vacationDays: [date],
-        totalDays: 1, // Count as 1 day off regardless of duration
-        efficiency: 1 / duration,
-        includes: [],
+        totalDays: 1, // Base total days, might need adjustment for non-workdays around it?
+        efficiency: 1 / duration, // Efficiency based on duration
+        includes: [], // Will be populated later if periods are merged
         isCompanyVacation: true,
       });
     }
   });
 
-  // Convert map to array of dates
   const dates = Array.from(companyVacationDatesMap.values()).map(
     (info) => info.date
   );
 
+  console.log(
+    "[Optimizer] processCompanyVacationDays Output Dates:",
+    dates.map((d) => d.toISOString())
+  );
+
+  // TODO: Consider merging adjacent company vacation periods here?
+
+  periods.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+
   return { dates, totalDays, periods };
 }
 
-// Helper function to group holidays by month
 function groupHolidaysByMonth(holidays: Holiday[]): {
   [month: number]: Holiday[];
 } {
   const result: { [month: number]: Holiday[] } = {};
 
   for (const holiday of holidays) {
-    const month = holiday.date.getMonth();
+    const month = holiday.date.getUTCMonth();
     if (!result[month]) {
       result[month] = [];
     }
@@ -203,32 +293,58 @@ function groupHolidaysByMonth(holidays: Holiday[]): {
   return result;
 }
 
-// Helper function to get all workdays between two dates
 function getAllWorkdays(
   startDate: Date,
   endDate: Date,
   workdays: number[]
 ): Date[] {
   const result: Date[] = [];
-  const currentDate = new Date(startDate);
+  console.log(
+    `[Optimizer] getAllWorkdays: Starting from ${startDate.toISOString()} to ${endDate.toISOString()}`
+  );
+  const currentDate = new Date(
+    Date.UTC(
+      startDate.getUTCFullYear(),
+      startDate.getUTCMonth(),
+      startDate.getUTCDate()
+    )
+  );
 
-  // Set to the beginning of the day to ensure proper comparison
-  currentDate.setHours(0, 0, 0, 0);
+  const finalEndDate = new Date(
+    Date.UTC(
+      endDate.getUTCFullYear(),
+      endDate.getUTCMonth(),
+      endDate.getUTCDate(),
+      23,
+      59,
+      59,
+      999
+    )
+  );
 
-  while (currentDate <= endDate) {
-    const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  let loggedCount = 0;
+  const maxLogs = 5;
+
+  while (currentDate <= finalEndDate) {
+    const dayOfWeek = currentDate.getUTCDay();
+
+    if (loggedCount < maxLogs) {
+      console.log(
+        `[Optimizer] getAllWorkdays check: ${currentDate.toISOString()}, UTC Day: ${dayOfWeek}`
+      );
+      loggedCount++;
+    }
 
     if (workdays.includes(dayOfWeek)) {
       result.push(new Date(currentDate));
     }
 
-    currentDate.setDate(currentDate.getDate() + 1);
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
   }
 
   return result;
 }
 
-// Helper function to find optimal vacation periods
 function findOptimalVacationPeriods(
   workdays: Date[],
   remainingVacationDays: number,
@@ -241,487 +357,776 @@ function findOptimalVacationPeriods(
   const periods: VacationPeriod[] = [];
   let vacationDaysLeft = remainingVacationDays;
 
-  // Sort workdays chronologically
-  workdays.sort((a: Date, b: Date) => a.getTime() - b.getTime());
+  const companyVacationDateStrings = new Set(
+    companyVacationDays.map((d) => d.toISOString().split("T")[0])
+  );
+  const holidayDateStrings = new Set(
+    holidays.map((h) => h.date.toISOString().split("T")[0])
+  );
 
-  // First, find strategic "bridge" days around holidays
+  // Filter available workdays: exclude company vacation days always,
+  // and exclude remote days IF remoteWorkdays array is not empty (toggle is on)
+  const shouldExcludeRemote = remoteWorkdays.length > 0;
+  const availableWorkdaysForVacation = workdays.filter((day: Date) => {
+    const dateStr = day.toISOString().split("T")[0];
+    const isCompanyDay = companyVacationDateStrings.has(dateStr);
+    const isRemote = shouldExcludeRemote && isRemoteDay(day, remoteWorkdays);
+    return !isCompanyDay && !isRemote;
+  });
+
+  availableWorkdaysForVacation.sort(
+    (a: Date, b: Date) => a.getTime() - b.getTime()
+  );
+
   const bridgePeriods = findBridgeDays(
-    workdays,
+    availableWorkdaysForVacation,
     holidays,
+    holidayDateStrings,
     workdayNumbers,
     vacationDaysLeft,
     remoteWorkdays,
-    companyVacationDays
+    companyVacationDateStrings
   );
 
-  // Add bridge periods to our result
   for (const period of bridgePeriods) {
-    if (vacationDaysLeft >= period.vacationDays.length) {
+    if (
+      vacationDaysLeft >= period.vacationDays.length &&
+      !doPeriodsOverlap(period, periods)
+    ) {
       periods.push(period);
       vacationDaysLeft -= period.vacationDays.length;
     }
   }
 
-  // Next, try to distribute remaining days around holidays in different months
+  periods.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+
   if (vacationDaysLeft > 0) {
     const distributedPeriods = distributeRemainingDays(
-      workdays,
+      availableWorkdaysForVacation,
       vacationDaysLeft,
       holidays,
+      holidayDateStrings,
       workdayNumbers,
       holidaysByMonth,
-      periods, // Avoid overlapping with already selected periods
+      periods,
       remoteWorkdays,
-      companyVacationDays
+      companyVacationDateStrings
     );
 
-    periods.push(...distributedPeriods);
-    vacationDaysLeft -= distributedPeriods.reduce(
-      (sum, period) => sum + period.vacationDays.length,
-      0
-    );
+    for (const period of distributedPeriods) {
+      if (
+        vacationDaysLeft >= period.vacationDays.length &&
+        !doPeriodsOverlap(period, periods)
+      ) {
+        periods.push(period);
+        vacationDaysLeft -= period.vacationDays.length;
+      }
+    }
+    periods.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
   }
 
-  // If we still have vacation days left, add some long weekends
   if (vacationDaysLeft > 0) {
     const longWeekends = createLongWeekends(
-      workdays,
+      availableWorkdaysForVacation,
       vacationDaysLeft,
       workdayNumbers,
       periods,
       remoteWorkdays,
-      companyVacationDays
+      companyVacationDateStrings
     );
-    periods.push(...longWeekends);
-    vacationDaysLeft -= longWeekends.reduce(
-      (sum, period) => sum + period.vacationDays.length,
-      0
-    );
+
+    for (const period of longWeekends) {
+      const overlaps = period.vacationDays.some((vd) =>
+        isDateInPeriods(vd, periods)
+      );
+      if (vacationDaysLeft >= period.vacationDays.length && !overlaps) {
+        periods.push(period);
+        vacationDaysLeft -= period.vacationDays.length;
+      }
+    }
+    periods.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
   }
+
+  periods.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 
   return periods;
 }
 
-// Find bridge days (days between holidays and weekends)
+function doPeriodsOverlap(
+  newPeriod: VacationPeriod,
+  existingPeriods: VacationPeriod[]
+): boolean {
+  const newStart = newPeriod.startDate.getTime();
+  const newEnd = newPeriod.endDate.getTime();
+
+  for (const existing of existingPeriods) {
+    const existingStart = existing.startDate.getTime();
+    const existingEnd = existing.endDate.getTime();
+
+    if (newStart <= existingEnd && newEnd >= existingStart) {
+      const newVacationDates = new Set(
+        newPeriod.vacationDays.map((d) => d.toISOString().split("T")[0])
+      );
+      for (const existingVD of existing.vacationDays) {
+        if (newVacationDates.has(existingVD.toISOString().split("T")[0])) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 function findBridgeDays(
-  workdays: Date[],
+  availableWorkdays: Date[],
   holidays: Holiday[],
+  holidayDates: Set<string>,
   workdayNumbers: number[],
   maxDays: number,
   remoteWorkdays: number[] = [],
-  companyVacationDays: Date[] = []
+  companyVacationDates: Set<string>
 ): VacationPeriod[] {
-  const periods: VacationPeriod[] = [];
-  const holidayDates = holidays.map((h) => h.date.toISOString().split("T")[0]);
-  const companyVacationDateStrings = companyVacationDays.map(
-    (d) => d.toISOString().split("T")[0]
-  );
-
-  // Filter out remote workdays and company vacation days - we don't want to use them as vacation days
-  const availableWorkdays = workdays.filter((day: Date) => {
-    const dateStr = day.toISOString().split("T")[0];
-    return (
-      !isRemoteDay(day, remoteWorkdays) &&
-      !companyVacationDateStrings.includes(dateStr)
-    );
-  });
+  const potentialPeriods: VacationPeriod[] = [];
 
   for (let i = 0; i < availableWorkdays.length; i++) {
     const currentDay = availableWorkdays[i];
+    const currentDayStr = currentDay.toISOString().split("T")[0];
+
+    if (companyVacationDates.has(currentDayStr)) {
+      continue;
+    }
+
     const dayBefore = addDays(currentDay, -1);
     const dayAfter = addDays(currentDay, 1);
+    const dayBeforeStr = dayBefore.toISOString().split("T")[0];
+    const dayAfterStr = dayAfter.toISOString().split("T")[0];
 
     const isBeforeWeekendOrHoliday =
       !isWorkday(dayAfter, workdayNumbers) ||
-      holidayDates.includes(dayAfter.toISOString().split("T")[0]) ||
-      companyVacationDateStrings.includes(dayAfter.toISOString().split("T")[0]);
+      holidayDates.has(dayAfterStr) ||
+      companyVacationDates.has(dayAfterStr);
 
     const isAfterWeekendOrHoliday =
       !isWorkday(dayBefore, workdayNumbers) ||
-      holidayDates.includes(dayBefore.toISOString().split("T")[0]) ||
-      companyVacationDateStrings.includes(
-        dayBefore.toISOString().split("T")[0]
-      );
+      holidayDates.has(dayBeforeStr) ||
+      companyVacationDates.has(dayBeforeStr);
 
     if (isBeforeWeekendOrHoliday || isAfterWeekendOrHoliday) {
-      // This is a good bridge day
-      const startDate = new Date(currentDay);
-      let endDate = new Date(currentDay);
       const vacationDays = [new Date(currentDay)];
+      let endDate = new Date(currentDay);
 
-      // Check if we can extend this bridge
       let j = i + 1;
       while (
         j < availableWorkdays.length &&
-        vacationDays.length < 3 && // Limit bridge to 3 days max
-        isConsecutiveDay(availableWorkdays[j - 1], availableWorkdays[j])
+        vacationDays.length < 4 &&
+        isConsecutiveWorkday(
+          availableWorkdays[j - 1],
+          availableWorkdays[j],
+          workdayNumbers,
+          holidayDates,
+          companyVacationDates
+        )
       ) {
         const nextDay = availableWorkdays[j];
-        const nextDayAfter = addDays(nextDay, 1);
         const nextDayStr = nextDay.toISOString().split("T")[0];
 
-        // Skip if this is a company vacation day
-        if (companyVacationDateStrings.includes(nextDayStr)) {
-          j++;
-          continue;
+        if (companyVacationDates.has(nextDayStr)) {
+          break;
         }
 
-        const isNextDayBeforeWeekendOrHoliday =
-          !isWorkday(nextDayAfter, workdayNumbers) ||
-          holidayDates.includes(nextDayAfter.toISOString().split("T")[0]) ||
-          companyVacationDateStrings.includes(
-            nextDayAfter.toISOString().split("T")[0]
-          );
+        const nextDayAfter = addDays(nextDay, 1);
+        const nextDayAfterStr = nextDayAfter.toISOString().split("T")[0];
 
-        if (isNextDayBeforeWeekendOrHoliday) {
+        const isNextDayBridge =
+          !isWorkday(nextDayAfter, workdayNumbers) ||
+          holidayDates.has(nextDayAfterStr) ||
+          companyVacationDates.has(nextDayAfterStr);
+
+        if (isNextDayBridge) {
           vacationDays.push(new Date(nextDay));
           endDate = new Date(nextDay);
-          j++;
         } else {
           break;
         }
+        j++;
       }
 
-      // Calculate the total days off including weekends and holidays
-      const totalDays = calculateTotalDaysOff(
-        startDate,
+      const periodStartDate = findPeriodStart(
+        vacationDays[0],
+        workdayNumbers,
+        holidayDates,
+        companyVacationDates
+      );
+      const periodEndDate = findPeriodEnd(
         endDate,
-        vacationDays,
+        workdayNumbers,
+        holidayDates,
+        companyVacationDates
+      );
+      const totalDaysOff = calculateTotalDaysOffInclusive(
+        periodStartDate,
+        periodEndDate
+      );
+      const efficiency = totalDaysOff / vacationDays.length;
+      const includes = getIncludedDaysInfo(
+        periodStartDate,
+        periodEndDate,
         holidays,
         workdayNumbers,
-        companyVacationDays
+        companyVacationDates
       );
 
-      // Calculate efficiency (days off per vacation day)
-      const efficiency = totalDays / vacationDays.length;
-
-      // Only add if efficiency is good (more than 1.2 days off per vacation day)
-      if (efficiency >= 1.2) {
-        periods.push({
-          startDate,
-          endDate,
-          vacationDays,
-          totalDays,
-          efficiency,
-          includes: getIncludedDaysInfo(
-            startDate,
-            endDate,
-            holidays,
-            workdayNumbers,
-            companyVacationDays
-          ),
-        });
-      }
-
-      // Skip the days we've already checked
-      i = j - 1;
+      potentialPeriods.push({
+        startDate: periodStartDate,
+        endDate: periodEndDate,
+        vacationDays,
+        totalDays: totalDaysOff,
+        efficiency,
+        includes,
+      });
     }
   }
 
-  // Sort by efficiency (best bridges first)
-  periods.sort((a, b) => (b.efficiency ?? 0) - (a.efficiency ?? 0));
+  potentialPeriods.sort((a, b) => {
+    const effA = Number.isFinite(a.efficiency)
+      ? a.efficiency ?? -Infinity
+      : -Infinity;
+    const effB = Number.isFinite(b.efficiency)
+      ? b.efficiency ?? -Infinity
+      : -Infinity;
 
-  // Return only the best bridges up to maxDays
+    if (effB !== effA) {
+      return effB - effA;
+    }
+    return a.startDate.getTime() - b.startDate.getTime();
+  });
+
+  const finalPeriods: VacationPeriod[] = [];
+  const selectedVacationDays = new Set<string>();
   let daysUsed = 0;
-  const result: VacationPeriod[] = [];
 
-  for (const period of periods) {
-    if (daysUsed + period.vacationDays.length <= maxDays) {
-      result.push(period);
+  for (const period of potentialPeriods) {
+    const periodVacationDays = period.vacationDays.map(
+      (d) => d.toISOString().split("T")[0]
+    );
+    const overlaps = periodVacationDays.some((d) =>
+      selectedVacationDays.has(d)
+    );
+    const exceedsMax = daysUsed + period.vacationDays.length > maxDays;
+
+    if (!overlaps && !exceedsMax) {
+      finalPeriods.push(period);
+      periodVacationDays.forEach((d) => selectedVacationDays.add(d));
       daysUsed += period.vacationDays.length;
     }
   }
 
-  return result;
+  return finalPeriods;
 }
 
-// Distribute remaining days around holidays in different months
+// Helper function to check if a Date object is valid
+function isValidDate(d: unknown): d is Date {
+  return d instanceof Date && !isNaN(d.getTime());
+}
+
+// --- Helper function to find the true start of an off-period ---
+function findPeriodStart(
+  vacationStartDate: Date,
+  workdayNumbers: number[],
+  holidayDates: Set<string>,
+  companyVacationDates: Set<string>
+): Date {
+  // Validate input date
+  if (!isValidDate(vacationStartDate)) {
+    console.error(
+      "Invalid vacationStartDate passed to findPeriodStart:",
+      vacationStartDate
+    );
+    // Return the invalid date or throw an error, depending on desired handling
+    return vacationStartDate; // Or potentially throw new Error(...)
+  }
+
+  let current = new Date(vacationStartDate);
+  let iterations = 0; // Safety counter
+  const maxIterations = 30;
+
+  while (iterations < maxIterations) {
+    const dayBefore = addDays(current, -1);
+
+    // Validate the calculated date before using it
+    if (!isValidDate(dayBefore)) {
+      console.error(
+        "Invalid date calculated in findPeriodStart (dayBefore):",
+        dayBefore,
+        " from current:",
+        current
+      );
+      break; // Stop the loop if an invalid date is produced
+    }
+
+    const dayBeforeStr = dayBefore.toISOString().split("T")[0];
+    if (
+      isWorkday(dayBefore, workdayNumbers) &&
+      !holidayDates.has(dayBeforeStr) &&
+      !companyVacationDates.has(dayBeforeStr)
+    ) {
+      // The day before is a working day, so 'current' is the true start
+      break;
+    }
+    current = dayBefore;
+    iterations++;
+  }
+
+  if (iterations === maxIterations) {
+    console.warn(
+      "findPeriodStart reached max iterations for date:",
+      vacationStartDate
+    );
+  }
+
+  return current;
+}
+
+// --- Helper function to find the true end of an off-period ---
+function findPeriodEnd(
+  vacationEndDate: Date,
+  workdayNumbers: number[],
+  holidayDates: Set<string>,
+  companyVacationDates: Set<string>
+): Date {
+  // Validate input date
+  if (!isValidDate(vacationEndDate)) {
+    console.error(
+      "Invalid vacationEndDate passed to findPeriodEnd:",
+      vacationEndDate
+    );
+    return vacationEndDate;
+  }
+
+  let current = new Date(vacationEndDate);
+  let iterations = 0; // Safety counter
+  const maxIterations = 30;
+
+  while (iterations < maxIterations) {
+    const dayAfter = addDays(current, 1);
+
+    // Validate the calculated date before using it
+    if (!isValidDate(dayAfter)) {
+      console.error(
+        "Invalid date calculated in findPeriodEnd (dayAfter):",
+        dayAfter,
+        " from current:",
+        current
+      );
+      break; // Stop the loop if an invalid date is produced
+    }
+
+    const dayAfterStr = dayAfter.toISOString().split("T")[0];
+    if (
+      isWorkday(dayAfter, workdayNumbers) &&
+      !holidayDates.has(dayAfterStr) &&
+      !companyVacationDates.has(dayAfterStr)
+    ) {
+      // The day after is a working day, so 'current' is the true end
+      break;
+    }
+    current = dayAfter;
+    iterations++;
+  }
+
+  if (iterations === maxIterations) {
+    console.warn(
+      "findPeriodEnd reached max iterations for date:",
+      vacationEndDate
+    );
+  }
+
+  return current;
+}
+
+function isConsecutiveWorkday(
+  day1: Date,
+  day2: Date,
+  workdayNumbers: number[],
+  holidayDates: Set<string>,
+  companyVacationDates: Set<string>
+): boolean {
+  let current = addDays(day1, 1);
+  const end = new Date(day2);
+  end.setHours(0, 0, 0, 0);
+
+  while (current < end) {
+    const currentStr = current.toISOString().split("T")[0];
+    if (
+      isWorkday(current, workdayNumbers) &&
+      !holidayDates.has(currentStr) &&
+      !companyVacationDates.has(currentStr)
+    ) {
+      return false;
+    }
+    current = addDays(current, 1);
+  }
+  return true;
+}
+
 function distributeRemainingDays(
-  workdays: Date[],
+  availableWorkdays: Date[],
   remainingDays: number,
   holidays: Holiday[],
+  holidayDates: Set<string>,
   workdayNumbers: number[],
   holidaysByMonth: { [month: number]: Holiday[] },
   existingPeriods: VacationPeriod[],
   remoteWorkdays: number[] = [],
-  companyVacationDays: Date[] = []
+  companyVacationDates: Set<string>
 ): VacationPeriod[] {
   const periods: VacationPeriod[] = [];
   let daysLeft = remainingDays;
-  const companyVacationDateStrings = companyVacationDays.map(
-    (d) => d.toISOString().split("T")[0]
-  );
 
-  // Filter out remote workdays and company vacation days
-  const availableWorkdays = workdays.filter((day: Date) => {
-    const dateStr = day.toISOString().split("T")[0];
-    return (
-      !isRemoteDay(day, remoteWorkdays) &&
-      !companyVacationDateStrings.includes(dateStr)
-    );
-  });
+  const monthsWithHolidays = Object.keys(holidaysByMonth)
+    .map(Number)
+    .sort((a, b) => a - b);
 
-  // Get months with holidays
-  const monthsWithHolidays = Object.keys(holidaysByMonth).map(Number);
-
-  // For each month with holidays
   for (const month of monthsWithHolidays) {
     if (daysLeft <= 0) break;
 
     const monthHolidays = holidaysByMonth[month];
-
-    // Skip if no holidays in this month
     if (!monthHolidays || monthHolidays.length === 0) continue;
 
-    // Find workdays in this month
     const monthWorkdays = availableWorkdays.filter(
-      (day: Date) => day.getMonth() === month
+      (day: Date) => day.getUTCMonth() === month
     );
-
-    // Skip if no workdays in this month
     if (monthWorkdays.length === 0) continue;
 
-    // Find days around holidays in this month
+    monthHolidays.sort((a, b) => a.date.getTime() - b.date.getTime());
+
     for (const holiday of monthHolidays) {
       if (daysLeft <= 0) break;
 
       const holidayDate = holiday.date;
 
-      // Find workdays close to this holiday
-      const nearbyWorkdays = monthWorkdays.filter((day: Date) => {
-        const diffDays =
-          Math.abs(day.getTime() - holidayDate.getTime()) /
-          (1000 * 60 * 60 * 24);
-        return diffDays <= 3; // Within 3 days of the holiday
-      });
+      const holidayTime = holidayDate.getTime();
+      const nearbyWorkdays: Date[] = [];
+      const maxDiff = 3 * 24 * 60 * 60 * 1000;
 
-      // Skip if no nearby workdays
+      for (const workday of monthWorkdays) {
+        const diff = Math.abs(workday.getTime() - holidayTime);
+        if (diff <= maxDiff) {
+          const workdayStr = workday.toISOString().split("T")[0];
+          if (
+            !isDateInPeriods(workday, existingPeriods) &&
+            !companyVacationDates.has(workdayStr)
+          ) {
+            nearbyWorkdays.push(workday);
+          }
+        }
+      }
+
       if (nearbyWorkdays.length === 0) continue;
 
-      // Check if these days overlap with existing periods
-      const nonOverlappingWorkdays = nearbyWorkdays.filter(
-        (day: Date) => !isDateInPeriods(day, existingPeriods)
-      );
-
-      // Skip if all nearby workdays overlap with existing periods
-      if (nonOverlappingWorkdays.length === 0) continue;
-
-      // Sort by proximity to holiday
-      nonOverlappingWorkdays.sort((a: Date, b: Date) => {
-        const diffA = Math.abs(a.getTime() - holidayDate.getTime());
-        const diffB = Math.abs(b.getTime() - holidayDate.getTime());
-        return diffA - diffB;
+      // Revert to sorting only by proximity to the holiday
+      nearbyWorkdays.sort((a: Date, b: Date) => {
+        const diffA = Math.abs(a.getTime() - holidayTime);
+        const diffB = Math.abs(b.getTime() - holidayTime);
+        if (diffA !== diffB) {
+          return diffA - diffB;
+        }
+        return a.getTime() - b.getTime(); // Tie-break with earlier date
       });
 
-      // Take up to 2 days around this holiday
-      const daysToTake = Math.min(2, daysLeft, nonOverlappingWorkdays.length);
-      const selectedDays = nonOverlappingWorkdays.slice(0, daysToTake);
+      // Double-check nearbyWorkdays still has elements after filtering and sorting
+      if (nearbyWorkdays.length === 0) continue;
 
-      if (selectedDays.length > 0) {
-        // Sort chronologically
-        selectedDays.sort((a: Date, b: Date) => a.getTime() - b.getTime());
+      // Use Math.floor on daysLeft to ensure we only take whole days
+      const daysToTake = Math.min(
+        Math.floor(daysLeft),
+        nearbyWorkdays.length,
+        2
+      );
 
-        const startDate = selectedDays[0];
-        const endDate = selectedDays[selectedDays.length - 1];
-        const vacationDays = selectedDays.map((day: Date) => new Date(day));
+      if (daysToTake <= 0) continue; // Skip if we can't take any days
 
-        // Calculate total days off
-        const totalDays = calculateTotalDaysOff(
+      const selectedDays = nearbyWorkdays.slice(0, daysToTake);
+
+      // Safety check - shouldn't be needed but prevents crash
+      if (selectedDays.length === 0) {
+        console.error(
+          "Logic error: selectedDays is empty despite daysToTake > 0 in distributeRemainingDays",
+          {
+            daysToTake,
+            nearbyWorkdaysLength: nearbyWorkdays.length,
+            holiday: holiday.name,
+            holidayDate: holiday.date.toISOString(),
+          }
+        );
+        continue; // Skip this iteration
+      }
+
+      selectedDays.sort((a: Date, b: Date) => a.getTime() - b.getTime());
+
+      const startDate = selectedDays[0];
+      const endDate = selectedDays[selectedDays.length - 1];
+
+      if (!isValidDate(startDate)) {
+        console.error(
+          "Invalid startDate generated in distributeRemainingDays:",
           startDate,
+          "from selectedDays:",
+          selectedDays
+        );
+        continue; // Skip this holiday if start date is invalid
+      }
+      if (!isValidDate(endDate)) {
+        console.error(
+          "Invalid endDate generated in distributeRemainingDays:",
           endDate,
-          vacationDays,
+          "from selectedDays:",
+          selectedDays
+        );
+        continue; // Skip this holiday if end date is invalid
+      }
+
+      // Find the actual start/end of the off-period
+      const periodStartDate = findPeriodStart(
+        startDate,
+        workdayNumbers,
+        holidayDates,
+        companyVacationDates
+      );
+      const periodEndDate = findPeriodEnd(
+        endDate,
+        workdayNumbers,
+        holidayDates,
+        companyVacationDates
+      );
+
+      const totalDays = calculateTotalDaysOffInclusive(
+        periodStartDate,
+        periodEndDate
+      );
+
+      const newPeriod: VacationPeriod = {
+        startDate: periodStartDate,
+        endDate: periodEndDate,
+        vacationDays: selectedDays,
+        totalDays: totalDays,
+        includes: getIncludedDaysInfo(
+          periodStartDate,
+          periodEndDate,
           holidays,
           workdayNumbers,
-          companyVacationDays
-        );
+          companyVacationDates
+        ),
+        isCompanyVacation: false,
+      };
 
-        periods.push({
-          startDate: new Date(startDate),
-          endDate: new Date(endDate),
-          vacationDays,
-          totalDays,
-          includes: getIncludedDaysInfo(
-            startDate,
-            endDate,
-            holidays,
-            workdayNumbers,
-            companyVacationDays
-          ),
-        });
-
+      if (
+        !doPeriodsOverlap(newPeriod, existingPeriods) &&
+        !doPeriodsOverlap(newPeriod, periods)
+      ) {
+        periods.push(newPeriod);
         daysLeft -= selectedDays.length;
       }
     }
   }
 
+  periods.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
   return periods;
 }
 
-// Create long weekends with remaining days
 function createLongWeekends(
-  workdays: Date[],
+  availableWorkdays: Date[],
   remainingDays: number,
   workdayNumbers: number[],
   existingPeriods: VacationPeriod[],
   remoteWorkdays: number[] = [],
-  companyVacationDays: Date[] = []
+  companyVacationDates: Set<string>
 ): VacationPeriod[] {
   const periods: VacationPeriod[] = [];
   let daysLeft = remainingDays;
-  const companyVacationDateStrings = companyVacationDays.map(
-    (d) => d.toISOString().split("T")[0]
+
+  const potentialFridays = availableWorkdays.filter(
+    (day: Date) =>
+      day.getUTCDay() === 5 &&
+      !isDateInPeriods(day, existingPeriods) &&
+      !companyVacationDates.has(day.toISOString().split("T")[0])
   );
+  // Remove sorting by remote status
+  potentialFridays.sort((a, b) => a.getTime() - b.getTime()); // Simple sort by date
 
-  // Filter out remote workdays and company vacation days
-  const availableWorkdays = workdays.filter((day: Date) => {
-    const dateStr = day.toISOString().split("T")[0];
-    return (
-      !isRemoteDay(day, remoteWorkdays) &&
-      !companyVacationDateStrings.includes(dateStr)
-    );
-  });
-
-  // Find Fridays and Mondays
-  const fridays = availableWorkdays.filter(
-    (day: Date) => day.getDay() === 5 && !isDateInPeriods(day, existingPeriods)
+  const potentialMondays = availableWorkdays.filter(
+    (day: Date) =>
+      day.getUTCDay() === 1 &&
+      !isDateInPeriods(day, existingPeriods) &&
+      !companyVacationDates.has(day.toISOString().split("T")[0])
   );
-  const mondays = availableWorkdays.filter(
-    (day: Date) => day.getDay() === 1 && !isDateInPeriods(day, existingPeriods)
-  );
+  // Remove sorting by remote status
+  potentialMondays.sort((a, b) => a.getTime() - b.getTime()); // Simple sort by date
 
-  // Distribute between Fridays and Mondays
-  const fridaysToUse = Math.min(Math.ceil(daysLeft / 2), fridays.length);
-  const mondaysToUse = Math.min(daysLeft - fridaysToUse, mondays.length);
+  let fridayIndex = 0;
+  let mondayIndex = 0;
 
-  // Add Fridays (for long weekends)
-  for (let i = 0; i < fridaysToUse && daysLeft > 0; i++) {
-    const friday = fridays[i];
-    const startDate = new Date(friday);
-    const endDate = new Date(friday);
-    const vacationDays = [new Date(friday)];
+  while (
+    daysLeft > 0 &&
+    (fridayIndex < potentialFridays.length ||
+      mondayIndex < potentialMondays.length)
+  ) {
+    if (daysLeft > 0 && fridayIndex < potentialFridays.length) {
+      const friday = potentialFridays[fridayIndex++];
+      if (!isDateInPeriods(friday, periods)) {
+        const startDate = new Date(friday);
+        const endDate = new Date(friday);
+        const vacationDays = [new Date(friday)];
+        const weekendStart = new Date(friday);
+        const weekendEnd = addDays(friday, 2);
 
-    // Calculate total days off (Friday + weekend = 3 days)
-    const totalDays = 3;
+        periods.push({
+          startDate,
+          endDate,
+          vacationDays,
+          totalDays: 3,
+          includes: getIncludedDaysInfo(
+            weekendStart,
+            weekendEnd,
+            [],
+            workdayNumbers,
+            companyVacationDates
+          ),
+          isCompanyVacation: false,
+        });
+        daysLeft--;
+      }
+    }
 
-    periods.push({
-      startDate,
-      endDate,
-      vacationDays,
-      totalDays,
-      includes: [{ type: "weekend" }],
-    });
+    if (daysLeft > 0 && mondayIndex < potentialMondays.length) {
+      const monday = potentialMondays[mondayIndex++];
+      if (!isDateInPeriods(monday, periods)) {
+        const startDate = new Date(monday);
+        const endDate = new Date(monday);
+        const vacationDays = [new Date(monday)];
+        const weekendStart = addDays(monday, -2);
+        const weekendEnd = new Date(monday);
 
-    daysLeft--;
+        periods.push({
+          startDate,
+          endDate,
+          vacationDays,
+          totalDays: 3,
+          includes: getIncludedDaysInfo(
+            weekendStart,
+            weekendEnd,
+            [],
+            workdayNumbers,
+            companyVacationDates
+          ),
+          isCompanyVacation: false,
+        });
+        daysLeft--;
+      }
+    }
   }
 
-  // Add Mondays (for long weekends)
-  for (let i = 0; i < mondaysToUse && daysLeft > 0; i++) {
-    const monday = mondays[i];
-    const startDate = new Date(monday);
-    const endDate = new Date(monday);
-    const vacationDays = [new Date(monday)];
-
-    // Calculate total days off (weekend + Monday = 3 days)
-    const totalDays = 3;
-
-    periods.push({
-      startDate,
-      endDate,
-      vacationDays,
-      totalDays,
-      includes: [{ type: "weekend" }],
-    });
-
-    daysLeft--;
-  }
-
-  // If we still have days left, add them to create 4-day weekends
   if (daysLeft > 0) {
-    // Find Thursdays and Tuesdays
-    const thursdays = availableWorkdays.filter(
+    const potentialThursdays = availableWorkdays.filter(
       (day: Date) =>
-        day.getDay() === 4 && !isDateInPeriods(day, existingPeriods)
+        day.getUTCDay() === 4 &&
+        !isDateInPeriods(day, existingPeriods) &&
+        !isDateInPeriods(day, periods) &&
+        !companyVacationDates.has(day.toISOString().split("T")[0])
     );
-    const tuesdays = availableWorkdays.filter(
-      (day: Date) =>
-        day.getDay() === 2 && !isDateInPeriods(day, existingPeriods)
-    );
+    // Remove sorting by remote status
+    potentialThursdays.sort((a, b) => a.getTime() - b.getTime()); // Simple sort by date
 
-    // Add Thursday-Friday combinations
-    for (let i = 0; i < thursdays.length && daysLeft > 1; i++) {
-      const thursday = thursdays[i];
+    const potentialTuesdays = availableWorkdays.filter(
+      (day: Date) =>
+        day.getUTCDay() === 2 &&
+        !isDateInPeriods(day, existingPeriods) &&
+        !isDateInPeriods(day, periods) &&
+        !companyVacationDates.has(day.toISOString().split("T")[0])
+    );
+    // Remove sorting by remote status
+    potentialTuesdays.sort((a, b) => a.getTime() - b.getTime()); // Simple sort by date
+
+    const isAdjDayAvailable = (adjDay: Date): boolean => {
+      const adjDayStr = adjDay.toISOString().split("T")[0];
+      return (
+        isWorkday(adjDay, workdayNumbers) &&
+        !isRemoteDay(adjDay, remoteWorkdays) &&
+        !companyVacationDates.has(adjDayStr) &&
+        !isDateInPeriods(adjDay, existingPeriods) &&
+        !isDateInPeriods(adjDay, periods)
+      );
+    };
+
+    let thursIndex = 0;
+    while (daysLeft > 1 && thursIndex < potentialThursdays.length) {
+      const thursday = potentialThursdays[thursIndex++];
       const friday = addDays(thursday, 1);
-      const fridayStr = friday.toISOString().split("T")[0];
-
-      // Check if Friday is a workday and not in existing periods and not a company vacation day
-      if (
-        isWorkday(friday, workdayNumbers) &&
-        !isDateInPeriods(friday, existingPeriods) &&
-        !isRemoteDay(friday, remoteWorkdays) &&
-        !companyVacationDateStrings.includes(fridayStr)
-      ) {
+      if (isAdjDayAvailable(friday)) {
         const startDate = new Date(thursday);
         const endDate = new Date(friday);
         const vacationDays = [new Date(thursday), new Date(friday)];
-
-        // Calculate total days off (Thursday + Friday + weekend = 4 days)
-        const totalDays = 4;
+        const weekendStart = new Date(thursday);
+        const weekendEnd = addDays(friday, 2);
 
         periods.push({
           startDate,
           endDate,
           vacationDays,
-          totalDays,
-          includes: [{ type: "weekend" }],
+          totalDays: 4,
+          includes: getIncludedDaysInfo(
+            weekendStart,
+            weekendEnd,
+            [],
+            workdayNumbers,
+            companyVacationDates
+          ),
+          isCompanyVacation: false,
         });
-
         daysLeft -= 2;
       }
     }
 
-    // Add Monday-Tuesday combinations
-    for (let i = 0; i < tuesdays.length && daysLeft > 1; i++) {
-      const tuesday = tuesdays[i];
+    let tuesIndex = 0;
+    while (daysLeft > 1 && tuesIndex < potentialTuesdays.length) {
+      const tuesday = potentialTuesdays[tuesIndex++];
       const monday = addDays(tuesday, -1);
-      const mondayStr = monday.toISOString().split("T")[0];
-
-      // Check if Monday is a workday and not in existing periods and not a company vacation day
-      if (
-        isWorkday(monday, workdayNumbers) &&
-        !isDateInPeriods(monday, existingPeriods) &&
-        !isRemoteDay(monday, remoteWorkdays) &&
-        !companyVacationDateStrings.includes(mondayStr)
-      ) {
+      if (isAdjDayAvailable(monday)) {
         const startDate = new Date(monday);
         const endDate = new Date(tuesday);
         const vacationDays = [new Date(monday), new Date(tuesday)];
-
-        // Calculate total days off (weekend + Monday + Tuesday = 4 days)
-        const totalDays = 4;
+        const weekendStart = addDays(monday, -2);
+        const weekendEnd = new Date(tuesday);
 
         periods.push({
           startDate,
           endDate,
           vacationDays,
-          totalDays,
-          includes: [{ type: "weekend" }],
+          totalDays: 4,
+          includes: getIncludedDaysInfo(
+            weekendStart,
+            weekendEnd,
+            [],
+            workdayNumbers,
+            companyVacationDates
+          ),
+          isCompanyVacation: false,
         });
-
         daysLeft -= 2;
       }
     }
   }
 
+  periods.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
   return periods;
 }
 
-// Helper function to check if a date is a remote workday
 function isRemoteDay(date: Date, remoteWorkdays: number[]): boolean {
-  const dayOfWeek = date.getDay();
-  return remoteWorkdays.includes(dayOfWeek);
+  const dayOfWeek = date.getUTCDay();
+  const isRemote = remoteWorkdays.includes(dayOfWeek);
+  return isRemote;
 }
 
-// Helper function to check if a date is within any of the periods
 function isDateInPeriods(date: Date, periods: VacationPeriod[]): boolean {
   const dateStr = date.toISOString().split("T")[0];
 
@@ -732,138 +1137,88 @@ function isDateInPeriods(date: Date, periods: VacationPeriod[]): boolean {
       }
     }
   }
-
   return false;
 }
 
-// Helper function to check if a date is a holiday
-function isHoliday(date: Date, holidays: Holiday[]): boolean {
-  const dateStr = date.toISOString().split("T")[0];
-  return holidays.some((h) => h.date.toISOString().split("T")[0] === dateStr);
-}
-
-// Helper function to check if a date is a company vacation day
-function isCompanyVacationDay(
-  date: Date,
-  companyVacationDays: Date[]
-): boolean {
-  const dateStr = date.toISOString().split("T")[0];
-  return companyVacationDays.some(
-    (d) => d.toISOString().split("T")[0] === dateStr
-  );
-}
-
-// Helper function to check if a date is a workday
 function isWorkday(date: Date, workdayNumbers: number[]): boolean {
-  return workdayNumbers.includes(date.getDay());
+  return workdayNumbers.includes(date.getUTCDay());
 }
 
-// Helper function to add days to a date
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
-  result.setDate(result.getDate() + days);
+  result.setUTCDate(result.getUTCDate() + days);
   return result;
 }
 
-// Helper function to check if two dates are consecutive workdays
-function isConsecutiveDay(date1: Date, date2: Date): boolean {
-  const diffTime = Math.abs(date2.getTime() - date1.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays <= 3; // Allow for weekends in between
-}
-
-// Helper function to calculate total days off in a period
-function calculateTotalDaysOff(
+function calculateTotalDaysOffInclusive(
   startDate: Date,
-  endDate: Date,
-  vacationDays: Date[],
-  holidays: Holiday[],
-  workdayNumbers: number[],
-  companyVacationDays: Date[] = []
+  endDate: Date
 ): number {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  start.setHours(0, 0, 0, 0);
-  end.setHours(23, 59, 59, 999);
-
-  let totalDays = 0;
-  const currentDate = new Date(start);
-
-  while (currentDate <= end) {
-    // Count if it's a vacation day, weekend, holiday, or company vacation day
-    const isVacation = vacationDays.some(
-      (d: Date) =>
-        d.toISOString().split("T")[0] ===
-        currentDate.toISOString().split("T")[0]
-    );
-    const isWeekend = !workdayNumbers.includes(currentDate.getDay());
-    const isHol = isHoliday(currentDate, holidays);
-    const isCompanyVacation = isCompanyVacationDay(
-      currentDate,
-      companyVacationDays
-    );
-
-    if (isVacation || isWeekend || isHol || isCompanyVacation) {
-      totalDays++;
-    }
-
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-
-  return totalDays;
+  const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  return diffDays;
 }
 
-// Helper function to get information about included days (weekends, holidays, company vacation)
 function getIncludedDaysInfo(
-  startDate: Date,
-  endDate: Date,
+  periodStartDate: Date,
+  periodEndDate: Date,
   holidays: Holiday[],
   workdayNumbers: number[],
-  companyVacationDays: Date[] = []
+  companyVacationDates: Set<string>
 ): { type: string; name?: string }[] {
   const includes: { type: string; name?: string }[] = [];
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  start.setHours(0, 0, 0, 0);
-  end.setHours(23, 59, 59, 999);
+  const holidayMap = new Map<string, string>();
+  holidays.forEach((h) =>
+    holidayMap.set(h.date.toISOString().split("T")[0], h.name)
+  );
 
-  // Add weekends
   let hasWeekend = false;
-  const currentDate = new Date(start);
+  const currentDate = new Date(periodStartDate);
+  const end = new Date(periodEndDate);
 
   while (currentDate <= end) {
-    if (!workdayNumbers.includes(currentDate.getDay())) {
+    const currentDayStr = currentDate.toISOString().split("T")[0];
+    const dayOfWeek = currentDate.getUTCDay();
+
+    if (!workdayNumbers.includes(dayOfWeek) && !hasWeekend) {
+      includes.push({ type: "weekend" });
       hasWeekend = true;
-      break;
     }
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
 
-  if (hasWeekend) {
-    includes.push({ type: "weekend" });
-  }
-
-  // Add holidays
-  for (const holiday of holidays) {
-    const holidayDate = holiday.date;
-    if (holidayDate >= start && holidayDate <= end) {
+    if (holidayMap.has(currentDayStr)) {
       includes.push({
         type: "holiday",
-        name: holiday.name,
+        name: holidayMap.get(currentDayStr),
       });
     }
-  }
 
-  // Add company vacation days
-  for (const vacationDay of companyVacationDays) {
-    const vacationDate = new Date(vacationDay);
-    if (vacationDate >= start && vacationDate <= end) {
+    if (companyVacationDates.has(currentDayStr)) {
       includes.push({
         type: "company",
         name: "Company Vacation",
       });
     }
+
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
   }
 
-  return includes;
+  const uniqueIncludes = Array.from(
+    new Map(includes.map((item) => [JSON.stringify(item), item])).values()
+  );
+
+  return uniqueIncludes;
+}
+
+// Renaming unused functions to satisfy linter
+function _isHoliday(date: Date, holidays: Holiday[]): boolean {
+  const dateStr = date.toISOString().split("T")[0];
+  return holidays.some((h) => h.date.toISOString().split("T")[0] === dateStr);
+}
+
+function _isCompanyVacationDay(
+  date: Date,
+  companyVacationDates: Set<string>
+): boolean {
+  const dateStr = date.toISOString().split("T")[0];
+  return companyVacationDates.has(dateStr);
 }

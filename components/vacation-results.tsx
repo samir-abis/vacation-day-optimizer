@@ -6,7 +6,33 @@ import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VacationPlan } from "@/lib/vacation-optimizer";
-import { DayProps } from "react-day-picker";
+import { DayProps, Day } from "react-day-picker";
+
+// Helper function to get YYYY-MM-DD string based on LOCAL date components
+function getLocalISODateString(date: Date): string {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    // Handle invalid dates if necessary, though react-day-picker should provide valid ones
+    return "";
+  }
+  // Use local components
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Months are 0-indexed
+  const day = date.getDate().toString().padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Helper function to get YYYY-MM-DD string based on UTC date components
+function getUTCISODateString(date: Date): string {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    // Handle invalid dates if necessary
+    return "";
+  }
+  // Use UTC components
+  const year = date.getUTCFullYear();
+  const month = (date.getUTCMonth() + 1).toString().padStart(2, "0"); // Months are 0-indexed
+  const day = date.getUTCDate().toString().padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 interface VacationResultsProps {
   plan: VacationPlan;
@@ -26,45 +52,92 @@ export default function VacationResults({ plan }: VacationResultsProps) {
     holidays,
     remoteWorkdays,
     companyVacationDays,
+    totalVacationDaysUsed,
+    companyVacationDaysCost,
+    optimizerBudget,
   } = plan;
 
-  // Parse dates
+  console.log(
+    "[VacationResults] Received plan.recommendedDays:",
+    recommendedDays
+  );
+  console.log("[VacationResults] Received plan.holidays:", holidays);
+  console.log(
+    "[VacationResults] Received plan.remoteWorkdays:",
+    remoteWorkdays
+  );
+  console.log(
+    "[VacationResults] Received plan.companyVacationDays:",
+    companyVacationDays
+  );
+
+  // Create Sets of LOCAL ISO date strings for efficient lookup
+  const vacationSet = new Set(
+    recommendedDays.map((day) => getLocalISODateString(new Date(day)))
+  );
+  const holidaySet = new Set(
+    holidays ? holidays.map((h) => getLocalISODateString(new Date(h.date))) : []
+  );
+  const remoteSet = new Set(
+    remoteWorkdays
+      ? remoteWorkdays.map((day) => getLocalISODateString(new Date(day)))
+      : []
+  );
+  const companySet = new Set(
+    companyVacationDays
+      ? companyVacationDays.map((day) => getLocalISODateString(new Date(day)))
+      : []
+  );
+
+  console.log(
+    "[VacationResults] Created vacationSet (using local dates):",
+    Array.from(vacationSet).slice(0, 10)
+  );
+  console.log(
+    "[VacationResults] Created holidaySet (using local dates):",
+    Array.from(holidaySet).slice(0, 10)
+  );
+  console.log(
+    "[VacationResults] Created remoteSet (using local dates):",
+    Array.from(remoteSet).slice(0, 10)
+  );
+  console.log(
+    "[VacationResults] Created companySet (using local dates):",
+    Array.from(companySet)
+  ); // Log entire set
+
+  // Store Date objects for calendar's `selected` prop
   const parsedRecommendedDays = recommendedDays.map(
     (day: string) => new Date(day)
   );
-  const parsedHolidays = holidays
-    ? holidays.map((h: { date: string; name: string }) => new Date(h.date))
-    : [];
-  const parsedRemoteWorkdays = remoteWorkdays
-    ? remoteWorkdays.map((day: string) => new Date(day))
-    : [];
-  const parsedCompanyVacationDays = companyVacationDays
-    ? companyVacationDays.map((day: string) => new Date(day))
-    : [];
 
-  // Get holiday names by date
+  // Get holiday names by LOCAL date string
   const holidayNamesByDate: { [key: string]: string } = {};
   if (holidays) {
     holidays.forEach((h: { date: string; name: string }) => {
       const date = new Date(h.date);
-      const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      // Use local date string for lookup
+      const dateKey = getLocalISODateString(date);
       holidayNamesByDate[dateKey] = h.name;
     });
   }
 
-  // Calculate efficiency (days off per vacation day used)
-  // Exclude company vacation days from the calculation for a more accurate efficiency ratio
-  const userSelectedVacationDays =
-    recommendedDays.length - parsedCompanyVacationDays.length;
+  // Calculate cost of optimizer-planned days
+  const optimizedVacationDaysCost =
+    totalVacationDaysUsed - companyVacationDaysCost;
+
+  // Efficiency calculation (based on optimizer-planned days cost)
   const efficiency =
-    userSelectedVacationDays > 0 ? totalDaysOff / userSelectedVacationDays : 0;
+    optimizedVacationDaysCost > 0
+      ? totalDaysOff / optimizedVacationDaysCost
+      : 0;
 
   // Group vacation periods by month for the tabs
   const periodsByMonth: { [month: number]: VacationPlan["vacationPeriods"] } =
     {};
   vacationPeriods.forEach((period) => {
     const startDate = new Date(period.startDate);
-    const month = startDate.getMonth();
+    const month = startDate.getUTCMonth(); // Use UTC month
 
     if (!periodsByMonth[month]) {
       periodsByMonth[month] = [];
@@ -74,17 +147,9 @@ export default function VacationResults({ plan }: VacationResultsProps) {
   });
 
   // Get months that have vacation periods
-  const monthsWithVacations = Object.keys(periodsByMonth).map(Number);
-
-  // Function to check if a date is in an array of dates
-  const isDateInArray = (date: Date, dateArray: Date[]): boolean => {
-    return dateArray.some(
-      (d: Date) =>
-        d.getFullYear() === date.getFullYear() &&
-        d.getMonth() === date.getMonth() &&
-        d.getDate() === date.getDate()
-    );
-  };
+  const monthsWithVacations = Object.keys(periodsByMonth)
+    .map(Number)
+    .sort((a, b) => a - b);
 
   // Custom day renderer for the calendar
   const renderDay = (props: CustomDayProps) => {
@@ -95,35 +160,41 @@ export default function VacationResults({ plan }: VacationResultsProps) {
       ...restProps
     } = props;
 
-    if (!date) return null;
+    // Check if the date is valid. The displayMonth check might be redundant.
+    if (!date) {
+      // Return a basic div or null if the date is invalid
+      return <div></div>;
+    }
 
-    // Check if this date is a holiday, vacation day, remote workday, or company vacation day
-    const isHoliday = isDateInArray(date, parsedHolidays);
-    const isVacationDay = isDateInArray(date, parsedRecommendedDays);
-    const isRemoteWorkday = isDateInArray(date, parsedRemoteWorkdays);
-    const isCompanyVacationDay = isDateInArray(date, parsedCompanyVacationDays);
+    // Get the LOCAL date string for comparison
+    const currentLocalISODateString = getLocalISODateString(date);
 
-    let dayClassName = ""; // Renamed to avoid conflict
+    const isHoliday = holidaySet.has(currentLocalISODateString);
+    const isVacationDay = vacationSet.has(currentLocalISODateString);
+    const isRemoteWorkday = remoteSet.has(currentLocalISODateString);
+    const isCompanyVacationDay = companySet.has(currentLocalISODateString);
+
+    let dayClassName = "";
     let holidayName = "";
     let label = "";
 
     if (isHoliday) {
-      dayClassName = "bg-red-100 text-red-800"; // Removed rounded-full
-      // Find the holiday name
-      const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      holidayName = holidayNamesByDate[dateKey] || "";
+      dayClassName = "bg-red-100 text-red-800";
+      holidayName = holidayNamesByDate[currentLocalISODateString] || ""; // Use local date string for lookup
       label = holidayName;
     } else if (isCompanyVacationDay) {
-      dayClassName = "bg-purple-100 text-purple-800"; // Removed rounded-full
+      dayClassName = "bg-purple-100 text-purple-800";
       label = "Company";
     } else if (isVacationDay) {
-      dayClassName = "bg-green-100 text-green-800"; // Removed rounded-full
+      // Ensure company vacation days are not double-counted visually
+      if (!isCompanyVacationDay) {
+        dayClassName = "bg-green-100 text-green-800";
+      }
     } else if (isRemoteWorkday) {
-      dayClassName = "bg-blue-100 text-blue-800"; // Removed rounded-full
+      dayClassName = "bg-blue-100 text-blue-800";
       label = "Remote";
     }
 
-    // Ensure label is shortened if too long, but allow more space
     if (label.length > 8) {
       label = label.substring(0, 6) + "...";
     }
@@ -131,14 +202,11 @@ export default function VacationResults({ plan }: VacationResultsProps) {
     return (
       <div
         {...restProps}
-        // Use flex column, center items, text-center, ensure full width/height, add padding
         className={`flex flex-col items-center justify-center w-full h-full p-1 text-center ${dayClassName} ${
           propsClassName || ""
         }`}
       >
-        {/* Make date slightly smaller */}
         <span className="text-xs">{date.getDate()}</span>
-        {/* Make label small, allow wrapping, center text */}
         {label && (
           <span className="text-[9px] text-center mt-0.5 leading-tight break-words max-w-full">
             {label}
@@ -156,20 +224,47 @@ export default function VacationResults({ plan }: VacationResultsProps) {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div
+              className={`grid grid-cols-1 md:grid-cols-${
+                companyVacationDaysCost > 0 ? 6 : 5
+              } gap-4`}
+            >
               <div className="p-4 border rounded-lg">
                 <div className="text-sm text-muted-foreground">
-                  Recommended Vacation Days
+                  Planned Days Used (from Budget)
                 </div>
                 <div className="text-2xl font-bold">
-                  {recommendedDays.length}
+                  {optimizedVacationDaysCost}
                 </div>
-                {parsedCompanyVacationDays.length > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    (includes {parsedCompanyVacationDays.length} company
-                    vacation days)
+                <div className="text-xs text-muted-foreground">
+                  (Budget: {optimizerBudget})
+                </div>
+              </div>
+              <div className="p-4 border rounded-lg">
+                <div className="text-sm text-muted-foreground">
+                  Remaining Days from Planning Budget
+                </div>
+                <div className="text-2xl font-bold">
+                  {remainingVacationDays}
+                </div>
+              </div>
+              {companyVacationDaysCost > 0 && (
+                <div className="p-4 border rounded-lg">
+                  <div className="text-sm text-muted-foreground">
+                    Company Vacation Cost
                   </div>
-                )}
+                  <div className="text-2xl font-bold">
+                    {companyVacationDaysCost}
+                  </div>
+                </div>
+              )}
+              <div className="p-4 border rounded-lg">
+                <div className="text-sm text-muted-foreground">
+                  Total Vacation Cost (Planned + Company)
+                </div>
+                <div className="text-2xl font-bold">
+                  {totalVacationDaysUsed}
+                </div>
               </div>
               <div className="p-4 border rounded-lg">
                 <div className="text-sm text-muted-foreground">
@@ -179,27 +274,14 @@ export default function VacationResults({ plan }: VacationResultsProps) {
               </div>
               <div className="p-4 border rounded-lg">
                 <div className="text-sm text-muted-foreground">
-                  Remaining Vacation Days
-                </div>
-                <div className="text-2xl font-bold">
-                  {remainingVacationDays}
-                </div>
-              </div>
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">
-                  Efficiency Ratio
+                  Efficiency Ratio (Planned Days)
                 </div>
                 <div className="text-2xl font-bold">
                   {efficiency.toFixed(2)}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  days off per vacation day
+                  days off per planned vacation day
                 </div>
-                {parsedCompanyVacationDays.length > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    (excluding company vacation days)
-                  </div>
-                )}
               </div>
             </div>
 

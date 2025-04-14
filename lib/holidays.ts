@@ -34,7 +34,8 @@ function calculateEaster(year: number): Date {
   const month = Math.floor((h + l - 7 * m + 114) / 31);
   const day = ((h + l - 7 * m + 114) % 31) + 1;
 
-  return new Date(year, month - 1, day);
+  // Return as UTC date
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 // Calculate movable holidays based on Easter
@@ -67,12 +68,58 @@ function calculateMovableHolidays(year: number): {
   const corpusChristi = new Date(easter);
   corpusChristi.setDate(easter.getDate() + 60);
 
+  // Return UTC dates
   return {
-    goodFriday: { name: "Good Friday", date: goodFriday },
-    easterMonday: { name: "Easter Monday", date: easterMonday },
-    ascensionDay: { name: "Ascension Day", date: ascensionDay },
-    whitMonday: { name: "Whit Monday", date: whitMonday },
-    corpusChristi: { name: "Corpus Christi", date: corpusChristi },
+    goodFriday: {
+      name: "Good Friday",
+      date: new Date(
+        Date.UTC(
+          goodFriday.getFullYear(),
+          goodFriday.getMonth(),
+          goodFriday.getDate()
+        )
+      ),
+    },
+    easterMonday: {
+      name: "Easter Monday",
+      date: new Date(
+        Date.UTC(
+          easterMonday.getFullYear(),
+          easterMonday.getMonth(),
+          easterMonday.getDate()
+        )
+      ),
+    },
+    ascensionDay: {
+      name: "Ascension Day",
+      date: new Date(
+        Date.UTC(
+          ascensionDay.getFullYear(),
+          ascensionDay.getMonth(),
+          ascensionDay.getDate()
+        )
+      ),
+    },
+    whitMonday: {
+      name: "Whit Monday",
+      date: new Date(
+        Date.UTC(
+          whitMonday.getFullYear(),
+          whitMonday.getMonth(),
+          whitMonday.getDate()
+        )
+      ),
+    },
+    corpusChristi: {
+      name: "Corpus Christi",
+      date: new Date(
+        Date.UTC(
+          corpusChristi.getFullYear(),
+          corpusChristi.getMonth(),
+          corpusChristi.getDate()
+        )
+      ),
+    },
   };
 }
 
@@ -84,11 +131,11 @@ export interface Holiday {
 // National holidays in Germany (fixed dates)
 export function getNationalHolidays(year: number): Holiday[] {
   return [
-    { name: "New Year's Day", date: new Date(year, 0, 1) },
-    { name: "Labor Day", date: new Date(year, 4, 1) },
-    { name: "German Unity Day", date: new Date(year, 9, 3) },
-    { name: "Second Day of Christmas", date: new Date(year, 11, 26) },
-    { name: "New Year's Eve", date: new Date(year, 11, 31) },
+    { name: "New Year's Day", date: new Date(Date.UTC(year, 0, 1)) },
+    { name: "Labor Day", date: new Date(Date.UTC(year, 4, 1)) },
+    { name: "German Unity Day", date: new Date(Date.UTC(year, 9, 3)) },
+    { name: "Christmas Day", date: new Date(Date.UTC(year, 11, 25)) },
+    { name: "Second Day of Christmas", date: new Date(Date.UTC(year, 11, 26)) },
   ];
 }
 
@@ -98,26 +145,26 @@ export function getRegionalHolidays(state: string, year: number): Holiday[] {
 
   const stateHolidays: { [key: string]: Holiday[] } = {
     "baden-wurttemberg": [
-      { name: "Epiphany", date: new Date(year, 0, 6) },
+      { name: "Epiphany", date: new Date(Date.UTC(year, 0, 6)) },
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
       movableHolidays.corpusChristi,
-      { name: "All Saints' Day", date: new Date(year, 10, 1) },
+      { name: "All Saints' Day", date: new Date(Date.UTC(year, 10, 1)) },
     ],
     bavaria: [
-      { name: "Epiphany", date: new Date(year, 0, 6) },
+      { name: "Epiphany", date: new Date(Date.UTC(year, 0, 6)) },
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
       movableHolidays.corpusChristi,
-      { name: "Assumption Day", date: new Date(year, 7, 15) },
-      { name: "All Saints' Day", date: new Date(year, 10, 1) },
+      { name: "Assumption Day", date: new Date(Date.UTC(year, 7, 15)) },
+      { name: "All Saints' Day", date: new Date(Date.UTC(year, 10, 1)) },
     ],
     berlin: [
-      { name: "Women's Day", date: new Date(year, 2, 8) },
+      { name: "Women's Day", date: new Date(Date.UTC(year, 2, 8)) },
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
@@ -129,21 +176,21 @@ export function getRegionalHolidays(state: string, year: number): Holiday[] {
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
     ],
     bremen: [
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
     ],
     hamburg: [
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
     ],
     hesse: [
       movableHolidays.goodFriday,
@@ -157,14 +204,14 @@ export function getRegionalHolidays(state: string, year: number): Holiday[] {
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
     ],
     "mecklenburg-vorpommern": [
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
     ],
     "north-rhine-westphalia": [
       movableHolidays.goodFriday,
@@ -172,7 +219,7 @@ export function getRegionalHolidays(state: string, year: number): Holiday[] {
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
       movableHolidays.corpusChristi,
-      { name: "All Saints' Day", date: new Date(year, 10, 1) },
+      { name: "All Saints' Day", date: new Date(Date.UTC(year, 10, 1)) },
     ],
     "rhineland-palatinate": [
       movableHolidays.goodFriday,
@@ -180,7 +227,7 @@ export function getRegionalHolidays(state: string, year: number): Holiday[] {
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
       movableHolidays.corpusChristi,
-      { name: "All Saints' Day", date: new Date(year, 10, 1) },
+      { name: "All Saints' Day", date: new Date(Date.UTC(year, 10, 1)) },
     ],
     saarland: [
       movableHolidays.goodFriday,
@@ -188,38 +235,38 @@ export function getRegionalHolidays(state: string, year: number): Holiday[] {
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
       movableHolidays.corpusChristi,
-      { name: "Assumption Day", date: new Date(year, 7, 15) },
-      { name: "All Saints' Day", date: new Date(year, 10, 1) },
+      { name: "Assumption Day", date: new Date(Date.UTC(year, 7, 15)) },
+      { name: "All Saints' Day", date: new Date(Date.UTC(year, 10, 1)) },
     ],
     saxony: [
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
-      { name: "Day of Repentance", date: new Date(year, 10, 16) }, // Approximate, would need calculation
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
+      { name: "Day of Repentance", date: new Date(Date.UTC(year, 10, 16)) }, // Approximate, would need calculation
     ],
     "saxony-anhalt": [
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Epiphany", date: new Date(year, 0, 6) },
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
+      { name: "Epiphany", date: new Date(Date.UTC(year, 0, 6)) },
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
     ],
     "schleswig-holstein": [
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
     ],
     thuringia: [
       movableHolidays.goodFriday,
       movableHolidays.easterMonday,
       movableHolidays.ascensionDay,
       movableHolidays.whitMonday,
-      { name: "Reformation Day", date: new Date(year, 9, 31) },
+      { name: "Reformation Day", date: new Date(Date.UTC(year, 9, 31)) },
     ],
   };
 

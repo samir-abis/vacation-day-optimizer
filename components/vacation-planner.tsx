@@ -31,6 +31,18 @@ import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SelectSingleEventHandler } from "react-day-picker";
 
+// Helper function to get YYYY-MM-DD string based on LOCAL date components
+function getLocalISODateString(date: Date): string {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return "";
+  }
+  // Use local components
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Months are 0-indexed
+  const day = date.getDate().toString().padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 // Define types for state
 type WorkdayState = {
   monday: boolean;
@@ -105,13 +117,13 @@ export default function VacationPlanner() {
   const addCompanyVacationDay = () => {
     if (!selectedDate) return;
 
-    // Format the date to ISO string for storage
-    const dateStr = selectedDate.toISOString();
+    // Format the date to YYYY-MM-DD string using local date components
+    const dateStr = getLocalISODateString(selectedDate);
 
     // Check if this date is already added
     const exists = companyVacationDays.some((day) => day.date === dateStr);
 
-    if (!exists) {
+    if (!exists && dateStr) {
       setCompanyVacationDays([
         ...companyVacationDays,
         {
@@ -166,7 +178,13 @@ export default function VacationPlanner() {
       allHolidays,
       year,
       remoteWorkdayNumbers,
-      companyVacationDays
+      companyVacationDays,
+      selectedState
+    );
+
+    console.log(
+      "[VacationPlanner] Calculating with remoteWorkdayNumbers:",
+      remoteWorkdayNumbers
     );
 
     setVacationPlan(result);
@@ -184,7 +202,9 @@ export default function VacationPlanner() {
         <CardContent className="pt-6">
           <div className="grid gap-6">
             <div className="grid gap-2">
-              <Label htmlFor="remaining-days">Remaining Vacation Days</Label>
+              <Label htmlFor="remaining-days">
+                Vacation Days Available for Planning
+              </Label>
               <Input
                 id="remaining-days"
                 type="number"

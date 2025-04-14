@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { VacationPlan } from "@/lib/vacation-optimizer";
 import { DayProps, Day } from "react-day-picker";
+import { VacationPlan } from "@/lib/types";
 
 // Helper function to get YYYY-MM-DD string based on LOCAL date components
 function getLocalISODateString(date: Date): string {

@@ -18,11 +18,8 @@ import {
   getNationalHolidays,
   getRegionalHolidays,
 } from "@/lib/holidays";
-import {
-  calculateOptimalVacationDays,
-  VacationPlan,
-  CompanyVacationDay,
-} from "@/lib/vacation-optimizer";
+import { calculateOptimalVacationDays } from "@/lib/vacation-optimizer";
+import { VacationPlan, CompanyVacationDay } from "@/lib/types";
 import VacationResults from "./vacation-results";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";

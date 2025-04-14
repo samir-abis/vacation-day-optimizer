@@ -15,8 +15,10 @@ const EFFICIENCY_WEIGHT = 1.5; // Prioritize getting more days off per vacation 
 const SHORT_GAP_WEIGHT = 1.0; // Prioritize using fewer vacation days (filling shorter gaps)
 const TOTAL_LENGTH_WEIGHT = 0.5; // Slightly favor longer resulting breaks
 const EARLY_MONTH_PENALTY_FACTOR = 0.05; // Slightly deprioritize very early months if budget is limited
-const HOLIDAY_INCLUSION_BONUS = 2.5; // Extra points for periods that include a public holiday (Increased from 1.2)
-const REMOTE_DAY_INCLUSION_BONUS = 0.75; // Bonus for each remote day included in the off-period (not costing vacation)
+const HOLIDAY_INCLUSION_BONUS = 1.2; // Extra points for periods that include a public holiday
+const REMOTE_DAY_INCLUSION_BONUS = 2; // Bonus for each remote day included in the off-period
+const REMOTE_DAY_VACATION_PENALTY = 5; // Penalty for using vacation days on remote workdays
+const NEXT_YEAR_VACATION_PENALTY = 5; // Penalty per vacation day used in the next year
 
 // --- Potential Period Interface ---
 interface PotentialPeriod extends VacationPeriod {
@@ -158,11 +160,50 @@ function calculateScore(
 
   // Bonus for including remote work days (that aren't vacation days)
   let remoteDayBonus = 0;
+  // Penalty for using vacation days on remote workdays
+  let remoteVacationPenalty = 0;
+
   const vacationDaysSet = new Set(
     period.vacationDays.map((d) => d.toISOString().split("T")[0])
   );
+
+  // DEBUG: Log vacation days for inspection
+  console.log(
+    `Scoring Period: ${period.startDate.toISOString().split("T")[0]} - ${
+      period.endDate.toISOString().split("T")[0]
+    }`
+  );
+  console.log(`  Vacation Days: ${Array.from(vacationDaysSet).join(", ")}`);
+
   const current = new Date(period.startDate);
   const end = new Date(period.endDate);
+
+  // Remote days with penalty
+  const penalizedDays: string[] = [];
+
+  // Next year vacation penalty
+  let nextYearVacationPenalty = 0;
+  const currentYearStr = period.startDate.getUTCFullYear().toString();
+  const vacationDaysInNextYear = period.vacationDays.filter(
+    (day) => day.getUTCFullYear().toString() !== currentYearStr
+  );
+  nextYearVacationPenalty =
+    vacationDaysInNextYear.length * NEXT_YEAR_VACATION_PENALTY;
+
+  // Debug logging for next year penalty
+  if (vacationDaysInNextYear.length > 0) {
+    console.log(
+      `  ⚠️ Penalized ${
+        vacationDaysInNextYear.length
+      } vacation days in next year: ${vacationDaysInNextYear
+        .map((d) => d.toISOString().split("T")[0])
+        .join(", ")}`
+    );
+    console.log(
+      `  ⚠️ Next year penalty: -${nextYearVacationPenalty.toFixed(2)}`
+    );
+  }
+
   while (current <= end) {
     const currentStr = current.toISOString().split("T")[0];
     if (
@@ -171,7 +212,24 @@ function calculateScore(
     ) {
       remoteDayBonus += REMOTE_DAY_INCLUSION_BONUS;
     }
+
+    // Add penalty for using vacation on remote days
+    if (remoteWorkdayDates.has(currentStr) && vacationDaysSet.has(currentStr)) {
+      remoteVacationPenalty += REMOTE_DAY_VACATION_PENALTY;
+      penalizedDays.push(currentStr);
+    }
+
     current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  // DEBUG: Check if any remote vacation days were penalized
+  if (penalizedDays.length > 0) {
+    console.log(
+      `  ⚠️ Penalized ${
+        penalizedDays.length
+      } remote vacation days: ${penalizedDays.join(", ")}`
+    );
+    console.log(`  ⚠️ Total penalty: -${remoteVacationPenalty.toFixed(2)}`);
   }
 
   const score =
@@ -180,14 +238,9 @@ function calculateScore(
     period.totalDays * TOTAL_LENGTH_WEIGHT - // Bonus for total length
     earlyPenalty +
     holidayBonus + // Add the holiday bonus
-    remoteDayBonus; // Add the remote day bonus
-
-  // console.log(`Scoring Period: ${period.startDate.toISOString().split('T')[0]} - ${period.endDate.toISOString().split('T')[0]}`);
-  // console.log(`  Vac Days: ${period.vacationDays.length}, Total Days: ${period.totalDays}, Efficiency: ${efficiency.toFixed(2)}`);
-  // console.log(`  Month: ${period.month}, Early Penalty: ${earlyPenalty.toFixed(2)}`);
-  // console.log(`  Remote Days Included (Bonus): ${remoteDayBonus / REMOTE_DAY_INCLUSION_BONUS} (+${remoteDayBonus.toFixed(2)})`);
-  // console.log(`  Score Components: Eff=${(normalizedEfficiency * EFFICIENCY_WEIGHT).toFixed(2)}, Gap=${(shortGapFactor * SHORT_GAP_WEIGHT).toFixed(2)}, Len=${(period.totalDays * TOTAL_LENGTH_WEIGHT).toFixed(2)}, HolBonus=${holidayBonus.toFixed(2)}`);
-  // console.log(`  Final Score: ${score.toFixed(2)}`);
+    remoteDayBonus - // Add the remote day bonus
+    remoteVacationPenalty - // Subtract the remote vacation penalty
+    nextYearVacationPenalty; // Subtract the next year vacation penalty
 
   return score;
 }
@@ -279,12 +332,23 @@ function generatePotentialBridgePeriods(
   maxBridgeLength: number = 4
 ): PotentialPeriod[] {
   const potentialPeriods: PotentialPeriod[] = [];
-  const availableWorkdaysSet = new Set(
-    availableWorkdays.map((d) => d.toISOString().split("T")[0])
+
+  // IMPORTANT: Filter out remote days from available workdays right at the start
+  const nonRemoteWorkdays = availableWorkdays.filter((day) => {
+    const dayStr = day.toISOString().split("T")[0];
+    return !remoteWorkdayDates.has(dayStr);
+  });
+
+  console.log(
+    `[Bridge Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
   );
 
-  for (let i = 0; i < availableWorkdays.length; i++) {
-    const startDay = availableWorkdays[i];
+  const availableWorkdaysSet = new Set(
+    nonRemoteWorkdays.map((d) => d.toISOString().split("T")[0])
+  );
+
+  for (let i = 0; i < nonRemoteWorkdays.length; i++) {
+    const startDay = nonRemoteWorkdays[i];
     const startDayStr = startDay.toISOString().split("T")[0];
 
     if (companyVacationDates.has(startDayStr)) continue;
@@ -393,8 +457,19 @@ function generatePotentialHolidayLinkPeriods(
   remoteWorkdayDates: Set<string>
 ): PotentialPeriod[] {
   const potentialPeriods: PotentialPeriod[] = [];
+
+  // IMPORTANT: Filter out remote days from available workdays right at the start
+  const nonRemoteWorkdays = availableWorkdays.filter((day) => {
+    const dayStr = day.toISOString().split("T")[0];
+    return !remoteWorkdayDates.has(dayStr);
+  });
+
+  console.log(
+    `[Holiday Link Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
+  );
+
   const availableWorkdaysSet = new Set(
-    availableWorkdays.map((d) => d.toISOString().split("T")[0])
+    nonRemoteWorkdays.map((d) => d.toISOString().split("T")[0])
   );
 
   for (const holiday of holidays) {
@@ -545,11 +620,22 @@ function generatePotentialLongWeekendPeriods(
   remoteWorkdayDates: Set<string>
 ): PotentialPeriod[] {
   const potentialPeriods: PotentialPeriod[] = [];
-  const availableWorkdaysSet = new Set(
-    availableWorkdays.map((d) => d.toISOString().split("T")[0])
+
+  // IMPORTANT: Filter out remote days from available workdays right at the start
+  const nonRemoteWorkdays = availableWorkdays.filter((day) => {
+    const dayStr = day.toISOString().split("T")[0];
+    return !remoteWorkdayDates.has(dayStr);
+  });
+
+  console.log(
+    `[Long Weekend Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
   );
 
-  for (const day of availableWorkdays) {
+  const availableWorkdaysSet = new Set(
+    nonRemoteWorkdays.map((d) => d.toISOString().split("T")[0])
+  );
+
+  for (const day of nonRemoteWorkdays) {
     const dayStr = day.toISOString().split("T")[0];
     const dayOfWeek = day.getUTCDay();
 
@@ -775,7 +861,8 @@ export function findOptimalVacationPeriods(
   workdayNumbers: number[],
   _holidaysByMonth: { [month: number]: Holiday[] },
   remoteWorkdays: number[] = [],
-  companyVacationDays: Date[] = []
+  companyVacationDays: Date[] = [],
+  remoteWorkdayDateStrings: Set<string> = new Set()
 ): VacationPeriod[] {
   const finalPeriods: VacationPeriod[] = [];
   let vacationDaysLeft = remainingVacationDays;
@@ -787,17 +874,9 @@ export function findOptimalVacationPeriods(
     holidays.map((h) => h.date.toISOString().split("T")[0])
   );
 
-  const remoteWorkdayDateStrings = new Set<string>();
-  if (remoteWorkdays.length > 0) {
-    workdays.forEach((day) => {
-      if (isRemoteDay(day, remoteWorkdays)) {
-        remoteWorkdayDateStrings.add(day.toISOString().split("T")[0]);
-      }
-    });
-    console.log(
-      `[Optimizer] Identified ${remoteWorkdayDateStrings.size} remote workday dates.`
-    );
-  }
+  console.log(
+    `[PeriodStrategies] Received ${remoteWorkdayDateStrings.size} remote workday dates for scoring.`
+  );
 
   const availableWorkdaysForVacation = workdays.filter((day: Date) => {
     const dateStr = day.toISOString().split("T")[0];
@@ -881,10 +960,43 @@ export function findOptimalVacationPeriods(
     `[Optimizer] Total unique valid potential periods: ${allPotentialPeriods.length}`
   );
 
-  allPotentialPeriods.sort((a, b) => b.score - a.score);
+  // Get the current year from the first available workday
+  const currentYear = availableWorkdaysForVacation[0]?.getUTCFullYear();
+
+  // Filter out periods with vacation days in the next year when possible
+  // Only do this if we have enough options in the current year
+  const currentYearPeriods = allPotentialPeriods.filter((period) => {
+    return !period.vacationDays.some(
+      (day) => day.getUTCFullYear() > currentYear
+    );
+  });
+
+  // Only use current year periods if we have enough options
+  const periodsToConsider =
+    currentYearPeriods.length >= remainingVacationDays * 2
+      ? currentYearPeriods
+      : allPotentialPeriods;
+
+  // Log how many periods were filtered out
+  if (currentYearPeriods.length < allPotentialPeriods.length) {
+    console.log(
+      `[Optimizer] Filtered out ${
+        allPotentialPeriods.length - currentYearPeriods.length
+      } periods with next-year vacation days.`
+    );
+    console.log(
+      `[Optimizer] Using ${
+        periodsToConsider === currentYearPeriods
+          ? "only current year"
+          : "all available"
+      } periods: ${periodsToConsider.length}`
+    );
+  }
+
+  periodsToConsider.sort((a, b) => b.score - a.score);
 
   console.log("[Optimizer] Top 10 potential periods by score:");
-  allPotentialPeriods.slice(0, 10).forEach((p, index) => {
+  periodsToConsider.slice(0, 10).forEach((p, index) => {
     console.log(
       `  ${index + 1}. Score: ${p.score.toFixed(2)}, Type: ${
         p.type
@@ -897,9 +1009,8 @@ export function findOptimalVacationPeriods(
   });
 
   console.log(`[Optimizer] Selecting periods with budget: ${vacationDaysLeft}`);
-  const coveredDates = new Set<string>(); // Track all dates covered by selected periods
 
-  for (const period of allPotentialPeriods) {
+  for (const period of periodsToConsider) {
     if (vacationDaysLeft <= 0) {
       break;
     }
@@ -907,32 +1018,17 @@ export function findOptimalVacationPeriods(
     const periodCost = period.vacationDays.length;
 
     if (periodCost > 0 && periodCost <= vacationDaysLeft) {
-      // --- MODIFIED OVERLAP CHECK ---
-      // Check if the start date OR any vacation day of the current period is already covered
-      // This prevents selecting periods whose SPANS significantly overlap,
-      // even if their specific vacation days don't directly overlap.
-      const periodStartDateStr = period.startDate.toISOString().split("T")[0];
-      const isOverlapping =
-        coveredDates.has(periodStartDateStr) || // Check if the period's start date is already covered
-        period.vacationDays.some(
-          (
-            vd // Also keep the original check for robustness
-          ) => coveredDates.has(vd.toISOString().split("T")[0])
-        );
-      // --- END MODIFIED CHECK ---
+      // --- Reverted Overlap Check ---
+      // Check ONLY if the specific VACATION days overlap with existing selections.
+      const newVacationDaysOverlap = doVacationDaysOverlap(
+        period.vacationDays,
+        finalPeriods
+      );
+      // --- END Reverted Check ---
 
-      if (!isOverlapping) {
-        // Only add if no significant overlap
+      if (!newVacationDaysOverlap) {
         finalPeriods.push(period);
         vacationDaysLeft -= periodCost;
-
-        // Add all dates within this newly selected period to coveredDates
-        const current = new Date(period.startDate);
-        const end = new Date(period.endDate);
-        while (current <= end) {
-          coveredDates.add(current.toISOString().split("T")[0]);
-          current.setUTCDate(current.getUTCDate() + 1);
-        }
 
         console.log(
           `[Optimizer] Selected Period: Start={

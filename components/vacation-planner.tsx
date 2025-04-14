@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -35,7 +34,7 @@ import {
   countriesWithSubdivisions,
   NagerHoliday,
 } from "@/lib/holidays";
-import { calculateOptimalVacationDays } from "@/lib/vacation-optimizer";
+import { calculateOptimalVacationPlan } from "@/lib/vacation-optimizer";
 import { VacationPlan, CompanyVacationDay } from "@/lib/types";
 import VacationResults from "./vacation-results";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -418,26 +417,41 @@ export default function VacationPlanner() {
 
     try {
       let holidaysToProcess: NagerHoliday[] = [];
+      const nextYear = year + 1;
 
-      // 1. Get Raw Holidays
-      if (rawHolidays) {
-        // Already fetched if country has subdivisions
-        holidaysToProcess = rawHolidays;
-      } else {
-        // Fetch now for countries without subdivisions
-        console.log(
-          `Fetching holidays for non-subdivision country: ${selectedCountryCode}, ${year}`
+      // --- Fetch Holidays for Current and Next Year ---
+      setIsFetchingHolidays(true);
+      setFetchHolidaysError(null);
+      console.log(
+        `Fetching holidays for ${selectedCountryCode}, Year: ${year}`
+      );
+      const currentYearHolidays = await getHolidaysFromAPI(
+        selectedCountryCode,
+        year
+      );
+      console.log(
+        `Fetching holidays for ${selectedCountryCode}, Year: ${nextYear}`
+      );
+      const nextYearHolidays = await getHolidaysFromAPI(
+        selectedCountryCode,
+        nextYear
+      );
+      setIsFetchingHolidays(false);
+
+      if (!currentYearHolidays || !nextYearHolidays) {
+        throw new Error(
+          "Failed to fetch holidays from API for one or both years."
         );
-        setIsFetchingHolidays(true);
-        setFetchHolidaysError(null);
-        holidaysToProcess = await getHolidaysFromAPI(selectedCountryCode, year);
-        setIsFetchingHolidays(false);
-        if (!holidaysToProcess) {
-          throw new Error("Failed to fetch holidays from API.");
-        }
       }
 
-      // 2. Filter Holidays by Subdivision (if applicable)
+      // Combine raw holidays, filtering next year for early months (e.g., Jan/Feb)
+      // Adjust the month cutoff (e.g., month < 2 for Jan/Feb) if needed
+      holidaysToProcess = [
+        ...currentYearHolidays,
+        ...nextYearHolidays, // Include all next year holidays for better planning at year boundaries
+      ];
+
+      // 2. Filter Combined Holidays by Subdivision (if applicable)
       const filteredHolidays = holidaysToProcess.filter(
         (h) =>
           h.global ||
@@ -449,17 +463,20 @@ export default function VacationPlanner() {
       console.log(
         `Using ${
           filteredHolidays.length
-        } holidays after filtering for subdivision '${
+        } holidays (incl. early next year) after filtering for subdivision '${
           selectedSubdivisionCode || "N/A"
         }'`
       );
 
       // 3. Map to expected Holiday[] format
-      const mappedHolidays: Holiday[] = filteredHolidays.map((h) => ({
-        name: h.name,
-        // Ensure consistent Date object creation (treat as local date)
-        date: new Date(`${h.date}T00:00:00`),
-      }));
+      const mappedHolidays: Holiday[] = filteredHolidays.map((h) => {
+        // Ensure consistent Date object creation (treat as UTC date)
+        const [year, month, day] = h.date.split("-").map(Number);
+        return {
+          name: h.name,
+          date: new Date(Date.UTC(year, month - 1, day)), // Use Date.UTC
+        };
+      });
 
       // 4. Get workdays/remote workdays (same as before)
       const workdayNumbers = [];
@@ -483,15 +500,15 @@ export default function VacationPlanner() {
       }
 
       // 5. Calculate optimal vacation days
-      const result = calculateOptimalVacationDays(
+      const result = calculateOptimalVacationPlan(
+        startDate || new Date(year, 0, 1), // initialStartDate (default to Jan 1st of selected year)
+        new Date(year, 11, 31), // initialEndDate (Dec 31st of selected year)
         remainingDays,
-        workdayNumbers,
         mappedHolidays, // Pass filtered and mapped holidays
-        year,
+        workdayNumbers,
         remoteWorkdayNumbers,
         companyVacationDays,
-        selectedCountryCode,
-        startDate
+        60 // default lookaheadDays
       );
 
       setVacationPlan(result);

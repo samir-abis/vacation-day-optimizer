@@ -26,6 +26,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Helper function to get YYYY-MM-DD string based on LOCAL date components
 function getLocalISODateString(date: Date): string {
@@ -241,30 +247,34 @@ export default function VacationResults({ plan }: VacationResultsProps) {
     let dayClassName = "";
     let tooltipContent = "";
     let IconComponent: React.ElementType | null = null;
+    let hasTooltip = false; // Flag to conditionally render Tooltip
 
     if (isHoliday) {
       dayClassName = "bg-red-100 text-red-900 hover:bg-red-200";
       tooltipContent =
-        holidayNamesByDate[currentLocalISODateString] || "Holiday"; // Use local date string for lookup
+        holidayNamesByDate[currentLocalISODateString] || "Holiday";
       IconComponent = CalendarDays;
+      hasTooltip = true;
     } else if (isCompanyVacationDay) {
       dayClassName = "bg-purple-100 text-purple-900 hover:bg-purple-200";
       tooltipContent = "Company Vacation";
       IconComponent = Building;
+      hasTooltip = true;
     } else if (isVacationDay) {
       // Ensure company vacation days are not double-counted visually
       dayClassName = "bg-green-100 text-green-900 hover:bg-green-200";
       tooltipContent = "Planned Vacation";
       IconComponent = Plane;
+      hasTooltip = true;
     } else if (isRemoteWorkday) {
       dayClassName = "bg-blue-100 text-blue-900 hover:bg-blue-200";
       tooltipContent = "Remote Workday";
       IconComponent = Briefcase;
+      hasTooltip = true;
     }
 
-    return (
+    const dayElement = (
       <div
-        title={tooltipContent} // Simple browser tooltip
         className={cn(
           "flex flex-col items-center justify-center w-full h-14 p-1 text-center relative rounded-md transition-colors",
           dayClassName,
@@ -278,6 +288,23 @@ export default function VacationResults({ plan }: VacationResultsProps) {
         )}
       </div>
     );
+
+    // Conditionally wrap with Tooltip if there is content to show
+    if (hasTooltip) {
+      return (
+        <Tooltip delayDuration={100}>
+          {" "}
+          {/* Optional: add small delay */}
+          <TooltipTrigger asChild>{dayElement}</TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltipContent}</p>
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+
+    // Return the plain element if no tooltip is needed
+    return dayElement;
   };
 
   // Determine the initial month for the calendar
@@ -630,46 +657,47 @@ export default function VacationResults({ plan }: VacationResultsProps) {
             Company Vacation
           </div>
         </div>
-        {/* Container div to measure for responsive months */}
-        <div
-          ref={containerRef}
-          className="w-full overflow-hidden flex justify-center"
-        >
-          {/* Calendar is now inside the measured container */}
-          <Calendar
-            mode="multiple"
-            selected={parsedRecommendedDays} // Still need selected for potential external interactions
-            month={currentDisplayMonth} // Use state for displayed month
-            onMonthChange={setCurrentDisplayMonth} // Update state on navigation
-            numberOfMonths={numberOfMonths} // Use calculated number of months
-            pagedNavigation
-            className="rounded-md border p-3 bg-card text-card-foreground shadow-sm" // Apply card-like styling here
-            classNames={{
-              months:
-                "flex flex-col items-center sm:flex-row sm:items-start space-y-4 sm:space-x-4 sm:space-y-0", // Center items vertically (mobile), align start horizontally (desktop)
-              month: "space-y-4",
-              caption_label: "text-base font-medium",
-              nav_button: "h-8 w-8",
-              nav_button_previous: "absolute left-1 top-1",
-              nav_button_next: "absolute right-1 top-1",
-              head_cell:
-                "w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-muted-foreground rounded-md font-normal text-[0.8rem]",
-              cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14",
-              day: "h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 p-0 font-normal aria-selected:opacity-100",
-              day_selected:
-                "bg-transparent text-primary-foreground hover:bg-transparent focus:bg-transparent", // Let custom renderer handle selected style
-              day_today: "bg-accent text-accent-foreground",
-              day_outside: "text-muted-foreground opacity-50",
-              day_disabled: "text-muted-foreground opacity-50",
-              day_range_middle:
-                "aria-selected:bg-accent aria-selected:text-accent-foreground",
-              day_hidden: "invisible",
-            }}
-            components={{
-              Day: renderDay,
-            }}
-          />
-        </div>
+        {/* Wrap Calendar container with TooltipProvider */}
+        <TooltipProvider>
+          <div
+            ref={containerRef}
+            className="w-full overflow-hidden flex justify-center"
+          >
+            <Calendar
+              mode="multiple"
+              selected={parsedRecommendedDays} // Still need selected for potential external interactions
+              month={currentDisplayMonth} // Use state for displayed month
+              onMonthChange={setCurrentDisplayMonth} // Update state on navigation
+              numberOfMonths={numberOfMonths} // Use calculated number of months
+              pagedNavigation
+              className="rounded-md border p-3 bg-card text-card-foreground shadow-sm" // Apply card-like styling here
+              classNames={{
+                months:
+                  "flex flex-col items-center sm:flex-row sm:items-start space-y-4 sm:space-x-4 sm:space-y-0", // Center items vertically (mobile), align start horizontally (desktop)
+                month: "space-y-4",
+                caption_label: "text-base font-medium",
+                nav_button: "h-8 w-8",
+                nav_button_previous: "absolute left-1 top-1",
+                nav_button_next: "absolute right-1 top-1",
+                head_cell:
+                  "w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-muted-foreground rounded-md font-normal text-[0.8rem]",
+                cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14",
+                day: "h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 p-0 font-normal aria-selected:opacity-100",
+                day_selected:
+                  "bg-transparent text-primary-foreground hover:bg-transparent focus:bg-transparent", // Let custom renderer handle selected style
+                day_today: "bg-accent text-accent-foreground",
+                day_outside: "text-muted-foreground opacity-50",
+                day_disabled: "text-muted-foreground opacity-50",
+                day_range_middle:
+                  "aria-selected:bg-accent aria-selected:text-accent-foreground",
+                day_hidden: "invisible",
+              }}
+              components={{
+                Day: renderDay,
+              }}
+            />
+          </div>
+        </TooltipProvider>
       </div>
     </div>
   );

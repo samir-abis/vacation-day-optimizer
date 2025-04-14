@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,9 +28,12 @@ import {
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import {
-  germanStates,
-  getNationalHolidays,
-  getRegionalHolidays,
+  getHolidaysFromAPI,
+  getAvailableCountries,
+  CountryOption,
+  Holiday,
+  countriesWithSubdivisions,
+  NagerHoliday,
 } from "@/lib/holidays";
 import { calculateOptimalVacationDays } from "@/lib/vacation-optimizer";
 import { VacationPlan, CompanyVacationDay } from "@/lib/types";
@@ -41,8 +44,43 @@ import { format } from "date-fns";
 import { CalendarIcon, Trash2 } from "lucide-react";
 import { SelectSingleEventHandler } from "react-day-picker";
 import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Loader2 } from "lucide-react";
 
-const LOCAL_STORAGE_KEY = "vacationPlannerState";
+const LOCAL_STORAGE_KEY = "vacationPlannerState_v3";
+
+// --- Helper: Map ISO 3166-2 codes to readable names (Example subset) ---
+// This should ideally be more comprehensive or dynamically sourced
+const subdivisionCodeToName: Record<string, string> = {
+  "DE-BW": "Baden-Württemberg",
+  "DE-BY": "Bavaria",
+  "DE-BE": "Berlin",
+  "DE-BB": "Brandenburg",
+  "DE-HB": "Bremen",
+  "DE-HH": "Hamburg",
+  "DE-HE": "Hesse",
+  "DE-MV": "Mecklenburg-Vorpommern",
+  "DE-NI": "Lower Saxony",
+  "DE-NW": "North Rhine-Westphalia",
+  "DE-RP": "Rhineland-Palatinate",
+  "DE-SL": "Saarland",
+  "DE-SN": "Saxony",
+  "DE-ST": "Saxony-Anhalt",
+  "DE-SH": "Schleswig-Holstein",
+  "DE-TH": "Thuringia",
+  "US-CA": "California",
+  "US-TX": "Texas",
+  "US-FL": "Florida",
+  "US-NY": "New York",
+  "CA-ON": "Ontario",
+  "CA-QC": "Quebec",
+  "CA-BC": "British Columbia",
+  "GB-ENG": "England",
+  "GB-SCT": "Scotland",
+  "GB-WLS": "Wales",
+  "GB-NIR": "Northern Ireland",
+  // Add more as needed
+};
 
 // Helper function to safely parse date from string or return undefined
 function safeParseDate(
@@ -82,10 +120,17 @@ export default function VacationPlanner() {
   const currentYear = new Date().getFullYear();
 
   // --- State Initialization with Defaults ---
-  // We'll initialize with defaults, then override with localStorage if available
   const [remainingDays, setRemainingDays] = useState<number>(14);
-  const [selectedState, setSelectedState] =
-    useState<string>("baden-wurttemberg");
+  // -- Country State --
+  const [availableCountries, setAvailableCountries] = useState<CountryOption[]>(
+    []
+  );
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string>("DE"); // Default to Germany
+  const [isFetchingCountries, setIsFetchingCountries] = useState<boolean>(true);
+  const [fetchCountriesError, setFetchCountriesError] = useState<string | null>(
+    null
+  );
+  // -- End Country State --
   const [workdays, setWorkdays] = useState<WorkdayState>({
     monday: true,
     tuesday: true,
@@ -107,6 +152,7 @@ export default function VacationPlanner() {
   const [year, setYear] = useState<number>(currentYear);
   const [vacationPlan, setVacationPlan] = useState<VacationPlan | null>(null);
   const [isCalculating, setIsCalculating] = useState<boolean>(false);
+  const [calculationError, setCalculationError] = useState<string | null>(null);
   const [considerRemoteWork, setConsiderRemoteWork] = useState<boolean>(true);
   const [companyVacationDays, setCompanyVacationDays] = useState<
     CompanyVacationDay[]
@@ -118,8 +164,99 @@ export default function VacationPlanner() {
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [isStartCalendarOpen, setIsStartCalendarOpen] = useState(false);
 
+  // Country & Subdivision State
+  const [availableSubdivisions, setAvailableSubdivisions] = useState<
+    CountryOption[]
+  >([]);
+  const [selectedSubdivisionCode, setSelectedSubdivisionCode] = useState<
+    string | null
+  >(null);
+
+  // Holiday Fetching State
+  const [rawHolidays, setRawHolidays] = useState<NagerHoliday[] | null>(null);
+  const [isFetchingHolidays, setIsFetchingHolidays] = useState<boolean>(false);
+  const [fetchHolidaysError, setFetchHolidaysError] = useState<string | null>(
+    null
+  );
+
+  const countryHasSubdivisions = useMemo(() => {
+    return countriesWithSubdivisions.includes(selectedCountryCode);
+  }, [selectedCountryCode]);
+
+  // --- Fetch Available Countries on Mount ---
+  useEffect(() => {
+    const fetchCountries = async () => {
+      setIsFetchingCountries(true);
+      setFetchCountriesError(null);
+      try {
+        const countries = await getAvailableCountries();
+        if (countries.length === 0) {
+          throw new Error("No countries returned from API.");
+        }
+        setAvailableCountries(countries);
+      } catch (error) {
+        console.error("Failed to fetch available countries:", error);
+        setFetchCountriesError(
+          "Could not load country list. Please try refreshing the page."
+        );
+      }
+      setIsFetchingCountries(false);
+    };
+    fetchCountries();
+  }, []);
+
+  // --- Fetch Holidays & Extract Subdivisions when Country/Year Changes ---
+  useEffect(() => {
+    if (!selectedCountryCode || !year) return;
+
+    const fetchHolidaysAndSubdivisions = async () => {
+      setRawHolidays(null); // Clear previous holidays
+      setAvailableSubdivisions([]); // Clear subdivisions
+      setSelectedSubdivisionCode(null); // Reset selection
+      setFetchHolidaysError(null);
+
+      if (countryHasSubdivisions) {
+        setIsFetchingHolidays(true);
+        try {
+          console.log(
+            `Fetching holidays for subdivision country: ${selectedCountryCode}, ${year}`
+          );
+          const holidays = await getHolidaysFromAPI(selectedCountryCode, year);
+          setRawHolidays(holidays);
+
+          // Extract unique subdivisions
+          const subdivisionCodes = new Set<string>();
+          holidays.forEach((h) => {
+            if (!h.global && h.counties) {
+              h.counties.forEach((code) => subdivisionCodes.add(code));
+            }
+          });
+
+          const subdivisions: CountryOption[] = Array.from(subdivisionCodes)
+            .map((code) => ({
+              value: code,
+              label: subdivisionCodeToName[code] || code, // Use mapped name or code
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+
+          setAvailableSubdivisions(subdivisions);
+          console.log(`Found ${subdivisions.length} subdivisions.`);
+        } catch (error) {
+          console.error("Failed to fetch holidays/subdivisions:", error);
+          setFetchHolidaysError("Could not load holiday or subdivision data.");
+        }
+        setIsFetchingHolidays(false);
+      }
+    };
+
+    fetchHolidaysAndSubdivisions();
+  }, [selectedCountryCode, year, countryHasSubdivisions]); // Rerun when country or year changes
+
   // --- Load State from localStorage on Mount ---
   useEffect(() => {
+    // Ensure countries are loaded before trying to load saved state
+    if (isFetchingCountries) return;
+
     try {
       const savedState = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (savedState) {
@@ -127,8 +264,18 @@ export default function VacationPlanner() {
         // Validate and set each piece of state
         if (typeof parsedState.remainingDays === "number")
           setRemainingDays(parsedState.remainingDays);
-        if (typeof parsedState.selectedState === "string")
-          setSelectedState(parsedState.selectedState);
+        // Load country code, ensure it's valid in the fetched list
+        if (
+          typeof parsedState.selectedCountryCode === "string" &&
+          availableCountries.some(
+            (c) => c.value === parsedState.selectedCountryCode
+          )
+        ) {
+          setSelectedCountryCode(parsedState.selectedCountryCode);
+        } else if (availableCountries.length > 0 && !selectedCountryCode) {
+          // If saved country is invalid or missing, default to first available (or keep DE)
+          setSelectedCountryCode(availableCountries[0].value);
+        }
         if (
           typeof parsedState.workdays === "object" &&
           parsedState.workdays !== null
@@ -148,20 +295,33 @@ export default function VacationPlanner() {
         if (typeof parsedState.startDate === "string") {
           setStartDate(safeParseDate(parsedState.startDate));
         }
+        // Load subdivision *after* potential country load and subdivision fetch
+        if (typeof parsedState.selectedSubdivisionCode === "string") {
+          // Check if the saved subdivision is valid for the (potentially loaded) country
+          if (
+            availableSubdivisions.some(
+              (s) => s.value === parsedState.selectedSubdivisionCode
+            )
+          ) {
+            setSelectedSubdivisionCode(parsedState.selectedSubdivisionCode);
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to load state from localStorage:", error);
-      // Optionally clear corrupted storage
-      // localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
-  }, []); // Empty dependency array ensures this runs only once on mount
+  }, [isFetchingCountries, availableCountries, availableSubdivisions]); // Add dependencies
 
   // --- Save State to localStorage on Change ---
   useEffect(() => {
+    // Don't save until countries are loaded (ensures valid default is set)
+    if (isFetchingCountries) return;
+
     try {
       const stateToSave = {
         remainingDays,
-        selectedState,
+        selectedCountryCode,
+        selectedSubdivisionCode, // Save subdivision
         workdays,
         remoteWorkdays,
         year,
@@ -176,13 +336,15 @@ export default function VacationPlanner() {
   }, [
     // Dependencies: save whenever any of these change
     remainingDays,
-    selectedState,
+    selectedCountryCode, // Changed dependency
+    selectedSubdivisionCode, // Added dependency
     workdays,
     remoteWorkdays,
     year,
     considerRemoteWork,
     companyVacationDays,
     startDate,
+    isFetchingCountries, // Include to ensure saving happens after load
   ]);
 
   const handleWorkdayChange = (day: DayKey) => {
@@ -228,7 +390,6 @@ export default function VacationPlanner() {
         },
       ]);
       setSelectedCompanyDate(undefined);
-      setIsCompanyCalendarOpen(false);
     }
   };
 
@@ -238,54 +399,111 @@ export default function VacationPlanner() {
     );
   };
 
-  const calculateVacationPlan = () => {
+  const calculateVacationPlan = async () => {
     setIsCalculating(true);
+    setCalculationError(null);
+    setVacationPlan(null);
 
-    // Get the workdays as array of numbers (0 = Sunday, 1 = Monday, etc.)
-    const workdayNumbers = [];
-    if (workdays.monday) workdayNumbers.push(1);
-    if (workdays.tuesday) workdayNumbers.push(2);
-    if (workdays.wednesday) workdayNumbers.push(3);
-    if (workdays.thursday) workdayNumbers.push(4);
-    if (workdays.friday) workdayNumbers.push(5);
-    if (workdays.saturday) workdayNumbers.push(6);
-    if (workdays.sunday) workdayNumbers.push(0);
-
-    // Get remote workdays as array of numbers
-    const remoteWorkdayNumbers = [];
-    if (considerRemoteWork) {
-      if (remoteWorkdays.monday) remoteWorkdayNumbers.push(1);
-      if (remoteWorkdays.tuesday) remoteWorkdayNumbers.push(2);
-      if (remoteWorkdays.wednesday) remoteWorkdayNumbers.push(3);
-      if (remoteWorkdays.thursday) remoteWorkdayNumbers.push(4);
-      if (remoteWorkdays.friday) remoteWorkdayNumbers.push(5);
-      if (remoteWorkdays.saturday) remoteWorkdayNumbers.push(6);
-      if (remoteWorkdays.sunday) remoteWorkdayNumbers.push(0);
+    // Basic validation
+    if (!selectedCountryCode) {
+      setCalculationError("Please select a country.");
+      setIsCalculating(false);
+      return;
+    }
+    if (countryHasSubdivisions && !selectedSubdivisionCode) {
+      setCalculationError("Please select a region/state for this country.");
+      setIsCalculating(false);
+      return;
     }
 
-    // Get holidays for the selected state
-    const nationalHolidays = getNationalHolidays(year);
-    const stateHolidays = getRegionalHolidays(selectedState, year);
-    const allHolidays = [...nationalHolidays, ...stateHolidays];
+    try {
+      let holidaysToProcess: NagerHoliday[] = [];
 
-    // Calculate optimal vacation days
-    const result = calculateOptimalVacationDays(
-      remainingDays,
-      workdayNumbers,
-      allHolidays,
-      year,
-      remoteWorkdayNumbers,
-      companyVacationDays,
-      selectedState,
-      startDate
-    );
+      // 1. Get Raw Holidays
+      if (rawHolidays) {
+        // Already fetched if country has subdivisions
+        holidaysToProcess = rawHolidays;
+      } else {
+        // Fetch now for countries without subdivisions
+        console.log(
+          `Fetching holidays for non-subdivision country: ${selectedCountryCode}, ${year}`
+        );
+        setIsFetchingHolidays(true);
+        setFetchHolidaysError(null);
+        holidaysToProcess = await getHolidaysFromAPI(selectedCountryCode, year);
+        setIsFetchingHolidays(false);
+        if (!holidaysToProcess) {
+          throw new Error("Failed to fetch holidays from API.");
+        }
+      }
 
-    console.log(
-      "[VacationPlanner] Calculating with remoteWorkdayNumbers:",
-      remoteWorkdayNumbers
-    );
+      // 2. Filter Holidays by Subdivision (if applicable)
+      const filteredHolidays = holidaysToProcess.filter(
+        (h) =>
+          h.global ||
+          (h.counties &&
+            selectedSubdivisionCode &&
+            h.counties.includes(selectedSubdivisionCode))
+      );
 
-    setVacationPlan(result);
+      console.log(
+        `Using ${
+          filteredHolidays.length
+        } holidays after filtering for subdivision '${
+          selectedSubdivisionCode || "N/A"
+        }'`
+      );
+
+      // 3. Map to expected Holiday[] format
+      const mappedHolidays: Holiday[] = filteredHolidays.map((h) => ({
+        name: h.name,
+        // Ensure consistent Date object creation (treat as local date)
+        date: new Date(`${h.date}T00:00:00`),
+      }));
+
+      // 4. Get workdays/remote workdays (same as before)
+      const workdayNumbers = [];
+      if (workdays.monday) workdayNumbers.push(1);
+      if (workdays.tuesday) workdayNumbers.push(2);
+      if (workdays.wednesday) workdayNumbers.push(3);
+      if (workdays.thursday) workdayNumbers.push(4);
+      if (workdays.friday) workdayNumbers.push(5);
+      if (workdays.saturday) workdayNumbers.push(6);
+      if (workdays.sunday) workdayNumbers.push(0);
+
+      const remoteWorkdayNumbers = [];
+      if (considerRemoteWork) {
+        if (remoteWorkdays.monday) remoteWorkdayNumbers.push(1);
+        if (remoteWorkdays.tuesday) remoteWorkdayNumbers.push(2);
+        if (remoteWorkdays.wednesday) remoteWorkdayNumbers.push(3);
+        if (remoteWorkdays.thursday) remoteWorkdayNumbers.push(4);
+        if (remoteWorkdays.friday) remoteWorkdayNumbers.push(5);
+        if (remoteWorkdays.saturday) remoteWorkdayNumbers.push(6);
+        if (remoteWorkdays.sunday) remoteWorkdayNumbers.push(0);
+      }
+
+      // 5. Calculate optimal vacation days
+      const result = calculateOptimalVacationDays(
+        remainingDays,
+        workdayNumbers,
+        mappedHolidays, // Pass filtered and mapped holidays
+        year,
+        remoteWorkdayNumbers,
+        companyVacationDays,
+        selectedCountryCode,
+        startDate
+      );
+
+      setVacationPlan(result);
+    } catch (error) {
+      console.error("Error during vacation plan calculation:", error);
+      setCalculationError(
+        `Calculation failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }. Please check console for details.`
+      );
+    }
+
     setIsCalculating(false);
   };
 
@@ -306,8 +524,23 @@ export default function VacationPlanner() {
         <h2 className="text-2xl font-semibold leading-none tracking-tight mb-4">
           Configure Your Vacation Plan
         </h2>
+
+        {fetchCountriesError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>Error Loading Countries</AlertTitle>
+            <AlertDescription>{fetchCountriesError}</AlertDescription>
+          </Alert>
+        )}
+
+        {fetchHolidaysError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>Error Loading Holidays</AlertTitle>
+            <AlertDescription>{fetchHolidaysError}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Initial Settings Group */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label htmlFor="remaining-days">Vacation Budget</Label>
             <Input
@@ -327,7 +560,7 @@ export default function VacationPlanner() {
               id="year"
               type="number"
               min={currentYear}
-              max="2030"
+              max={2030}
               value={year}
               onChange={(e) =>
                 setYear(Number.parseInt(e.target.value) || currentYear)
@@ -335,20 +568,68 @@ export default function VacationPlanner() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="state">Federal State</Label>
-            <Select value={selectedState} onValueChange={setSelectedState}>
-              <SelectTrigger id="state">
-                <SelectValue placeholder="Select your federal state" />
+            <Label htmlFor="country">Country</Label>
+            <Select
+              value={selectedCountryCode}
+              onValueChange={setSelectedCountryCode}
+              disabled={isFetchingCountries || !!fetchCountriesError}
+            >
+              <SelectTrigger id="country">
+                <SelectValue placeholder="Select country..." />
               </SelectTrigger>
               <SelectContent>
-                {germanStates.map((state) => (
-                  <SelectItem key={state.value} value={state.value}>
-                    {state.label}
-                  </SelectItem>
-                ))}
+                {isFetchingCountries ? (
+                  <div className="flex items-center justify-center p-4">
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    Loading countries...
+                  </div>
+                ) : (
+                  availableCountries.map((country) => (
+                    <SelectItem key={country.value} value={country.value}>
+                      {country.label}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
+          {countryHasSubdivisions && (
+            <div className="space-y-2">
+              <Label htmlFor="subdivision">Region / State</Label>
+              <Select
+                value={selectedSubdivisionCode || ""} // Handle null value
+                onValueChange={(value) =>
+                  setSelectedSubdivisionCode(value || null)
+                } // Set back to null if placeholder selected
+                disabled={
+                  isFetchingHolidays || availableSubdivisions.length === 0
+                }
+              >
+                <SelectTrigger id="subdivision">
+                  <SelectValue placeholder="Select region/state..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {isFetchingHolidays ? (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                      Loading regions...
+                    </div>
+                  ) : availableSubdivisions.length === 0 &&
+                    !isFetchingHolidays ? (
+                    <div className="p-4 text-sm text-muted-foreground">
+                      No specific regions found for this country/year.
+                    </div>
+                  ) : (
+                    availableSubdivisions.map((sub) => (
+                      <SelectItem key={sub.value} value={sub.value}>
+                        {sub.label}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         {/* Start Date Selector */}
@@ -614,13 +895,34 @@ export default function VacationPlanner() {
 
         <Separator />
 
+        {calculationError && (
+          <Alert variant="destructive" className="my-4">
+            <AlertTitle>Calculation Error</AlertTitle>
+            <AlertDescription>{calculationError}</AlertDescription>
+          </Alert>
+        )}
+
         <Button
           onClick={calculateVacationPlan}
-          disabled={isCalculating}
+          disabled={
+            isCalculating ||
+            isFetchingCountries ||
+            isFetchingHolidays ||
+            !!fetchCountriesError ||
+            !!fetchHolidaysError ||
+            !selectedCountryCode ||
+            (countryHasSubdivisions && !selectedSubdivisionCode)
+          }
           className="w-full"
           size="lg"
         >
-          {isCalculating ? "Calculating..." : "Calculate Optimal Vacation Plan"}
+          {isCalculating ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculating...
+            </>
+          ) : (
+            "Calculate Optimal Vacation Plan"
+          )}
         </Button>
       </div>
 

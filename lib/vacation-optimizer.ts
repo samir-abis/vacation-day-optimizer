@@ -1,4 +1,4 @@
-import { Holiday, getNationalHolidays, getRegionalHolidays } from "./holidays";
+import { Holiday } from "./holidays";
 import { VacationPeriod, CompanyVacationDay, VacationPlan } from "./types";
 import { getAllWorkdays, isRemoteDay } from "./date-utils";
 import { findOptimalVacationPeriods } from "./period-strategies";
@@ -6,11 +6,11 @@ import { findOptimalVacationPeriods } from "./period-strategies";
 export function calculateOptimalVacationDays(
   remainingVacationDays: number,
   workdays: number[],
-  initialHolidays: Holiday[],
+  holidays: Holiday[],
   year: number,
   remoteWorkdays: number[] = [],
   companyVacationDays: CompanyVacationDay[] = [],
-  state: string | null = null,
+  countryCode: string,
   optimizationStartDateParam?: Date
 ): VacationPlan {
   console.log("[Optimizer] Received remoteWorkdays:", remoteWorkdays);
@@ -18,8 +18,12 @@ export function calculateOptimalVacationDays(
     "[Optimizer] Received companyVacationDays (Input):",
     companyVacationDays
   );
+  console.log(
+    `[Optimizer] Received ${holidays.length} holidays for ${countryCode}, ${year}`
+  );
+
   const today = new Date();
-  const calculationEndDate = new Date(year + 1, 0, 15);
+  const calculationEndDate = new Date(year + 1, 1, 28);
 
   let optimizationStartDate: Date;
   if (optimizationStartDateParam) {
@@ -45,37 +49,46 @@ export function calculateOptimalVacationDays(
     `[Optimizer] Effective Optimization Start Date: ${optimizationStartDate.toISOString()}`
   );
 
-  let allHolidays = [...initialHolidays];
-
-  if (state) {
-    allHolidays = allHolidays.concat(getRegionalHolidays(state, year));
-  }
-
-  const nextYearNationalHolidays = getNationalHolidays(year + 1);
-  allHolidays = allHolidays.concat(nextYearNationalHolidays);
-
-  if (state) {
-    const nextYearRegionalHolidays = getRegionalHolidays(state, year + 1);
-    allHolidays = allHolidays.concat(nextYearRegionalHolidays);
-  }
-
   const uniqueHolidaysMap = new Map<string, Holiday>();
-  allHolidays.forEach((h) =>
-    uniqueHolidaysMap.set(h.date.toISOString().split("T")[0], h)
-  );
-  const holidays = Array.from(uniqueHolidaysMap.values());
-  const relevantHolidays = holidays.filter(
-    (h) => h.date >= optimizationStartDate && h.date <= calculationEndDate
+  holidays.forEach((h) => {
+    const dateKey = new Date(
+      h.date.getFullYear(),
+      h.date.getMonth(),
+      h.date.getDate()
+    )
+      .toISOString()
+      .split("T")[0];
+    uniqueHolidaysMap.set(dateKey, h);
+  });
+  const uniqueHolidays = Array.from(uniqueHolidaysMap.values());
+
+  const relevantHolidays = uniqueHolidays.filter((h) => {
+    const holidayDateOnly = new Date(
+      h.date.getFullYear(),
+      h.date.getMonth(),
+      h.date.getDate()
+    );
+    return (
+      holidayDateOnly >= optimizationStartDate &&
+      holidayDateOnly <= calculationEndDate
+    );
+  });
+
+  console.log(
+    `[Optimizer] Using ${relevantHolidays.length} relevant holidays for calculation.`
   );
 
-  const allWorkdays = getAllWorkdays(
+  const allWorkdaysInRange = getAllWorkdays(
     optimizationStartDate,
     calculationEndDate,
     workdays
   );
 
   const holidayDates = relevantHolidays.map(
-    (h) => h.date.toISOString().split("T")[0]
+    (h) =>
+      new Date(h.date.getFullYear(), h.date.getMonth(), h.date.getDate())
+        .toISOString()
+        .split("T")[0]
   );
   // Log the holiday dates being used for filtering workdays
   console.log(
@@ -83,8 +96,13 @@ export function calculateOptimalVacationDays(
     holidayDates
   );
 
-  const workdaysWithoutHolidays = allWorkdays.filter(
-    (day) => !holidayDates.includes(day.toISOString().split("T")[0])
+  const workdaysWithoutHolidays = allWorkdaysInRange.filter(
+    (day) =>
+      !holidayDates.includes(
+        new Date(day.getFullYear(), day.getMonth(), day.getDate())
+          .toISOString()
+          .split("T")[0]
+      )
   );
 
   const companyVacationDatesInfo = processCompanyVacationDays(

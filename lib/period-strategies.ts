@@ -866,6 +866,8 @@ export function findOptimalVacationPeriods(
   });
 
   console.log(`[Optimizer] Selecting periods with budget: ${vacationDaysLeft}`);
+  const coveredDates = new Set<string>(); // Track all dates covered by selected periods
+
   for (const period of allPotentialPeriods) {
     if (vacationDaysLeft <= 0) {
       break;
@@ -874,9 +876,24 @@ export function findOptimalVacationPeriods(
     const periodCost = period.vacationDays.length;
 
     if (periodCost > 0 && periodCost <= vacationDaysLeft) {
-      if (!doVacationDaysOverlap(period.vacationDays, finalPeriods)) {
+      // Check if any vacation day of the current period is already covered
+      const isOverlapping = period.vacationDays.some((vd) =>
+        coveredDates.has(vd.toISOString().split("T")[0])
+      );
+
+      if (!isOverlapping) {
+        // Only add if no vacation day overlaps
         finalPeriods.push(period);
         vacationDaysLeft -= periodCost;
+
+        // Add all dates within this newly selected period to coveredDates
+        const current = new Date(period.startDate);
+        const end = new Date(period.endDate);
+        while (current <= end) {
+          coveredDates.add(current.toISOString().split("T")[0]);
+          current.setUTCDate(current.getUTCDate() + 1);
+        }
+
         console.log(
           `[Optimizer] Selected Period: Start=${
             period.startDate.toISOString().split("T")[0]

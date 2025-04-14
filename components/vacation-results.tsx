@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
@@ -10,8 +10,22 @@ import { DayProps } from "react-day-picker";
 import { VacationPlan } from "@/lib/types";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Briefcase, CalendarDays, Building, Plane } from "lucide-react";
+import {
+  Briefcase,
+  CalendarDays,
+  Building,
+  Plane,
+  ArrowUpDown,
+} from "lucide-react";
 import { useResponsiveCalendarMonths } from "@/hooks/use-responsive-calendar-months";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 // Helper function to get YYYY-MM-DD string based on LOCAL date components
 function getLocalISODateString(date: Date): string {
@@ -42,6 +56,21 @@ function getUTCISODateString(date: Date): string {
 interface VacationResultsProps {
   plan: VacationPlan;
 }
+
+// Define a type for sorting configuration
+type SortConfig = {
+  key: SortableKeys; // Use the refined SortableKeys type
+  direction: "ascending" | "descending";
+} | null;
+
+// Define a type for sorting keys explicitly
+// Only include keys that are actually sortable in the table
+type SortableKeys =
+  | "startDate"
+  | "endDate"
+  | "totalDays"
+  | "vacationDaysUsed"
+  | "efficiency";
 
 // Define a custom interface extending DayProps
 interface CustomDayProps extends DayProps {
@@ -274,8 +303,81 @@ export default function VacationResults({ plan }: VacationResultsProps) {
   const { containerRef, numberOfMonths } = useResponsiveCalendarMonths({
     // Optional: Adjust monthWidth estimate if needed (default is 330)
     // monthWidth: 350,
+    // Increase monthWidth estimate to prevent overcrowding
+    monthWidth: 360,
     maxMonths: 3, // Still limit to a maximum of 3 months
   });
+
+  // State for sorting the 'All Periods' table
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: "startDate",
+    direction: "ascending",
+  });
+
+  // Memoized sorted data for the table
+  const sortedVacationPeriods = useMemo(() => {
+    // Use const as sortableItems is not reassigned
+    const sortableItems = [...vacationPeriods];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        // Use number type instead of any, as all comparisons are numeric
+        let aValue: number;
+        let bValue: number;
+
+        if (sortConfig.key === "efficiency") {
+          aValue =
+            a.vacationDaysUsed > 0 ? a.totalDays / a.vacationDaysUsed : 0;
+          bValue =
+            b.vacationDaysUsed > 0 ? b.totalDays / b.vacationDaysUsed : 0;
+        } else if (
+          sortConfig.key === "startDate" ||
+          sortConfig.key === "endDate"
+        ) {
+          aValue = new Date(a[sortConfig.key]).getTime();
+          bValue = new Date(b[sortConfig.key]).getTime();
+        } else {
+          aValue = a[sortConfig.key];
+          bValue = b[sortConfig.key];
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === "ascending" ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === "ascending" ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [vacationPeriods, sortConfig]);
+
+  // Function to request sorting
+  // Use the explicit SortableKeys type for the key parameter
+  const requestSort = (key: SortableKeys) => {
+    let direction: "ascending" | "descending" = "ascending";
+    if (
+      sortConfig &&
+      sortConfig.key === key &&
+      sortConfig.direction === "ascending"
+    ) {
+      direction = "descending";
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Helper to get sort icon
+  // Use the explicit SortableKeys type for the key parameter
+  const getSortIcon = (key: SortableKeys) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />;
+    }
+    return sortConfig.direction === "ascending" ? (
+      <ArrowUpDown className="ml-2 h-4 w-4" /> // Or specific up/down icons
+    ) : (
+      <ArrowUpDown className="ml-2 h-4 w-4" /> // Or specific up/down icons
+    );
+  };
 
   return (
     <div className="space-y-8">
@@ -333,10 +435,155 @@ export default function VacationResults({ plan }: VacationResultsProps) {
 
             <TabsContent value="all">
               <div className="space-y-4">
-                <h3 className="text-lg font-medium">All Vacation Periods</h3>
-                {vacationPeriods.map((period, index: number) => (
-                  <VacationPeriodCard key={index} period={period} />
-                ))}
+                <h3 className="text-lg font-medium mb-4">
+                  All Vacation Periods
+                </h3>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => requestSort("startDate")}
+                        >
+                          {/* Wrap text and icon for flex alignment */}
+                          <div className="flex items-center">
+                            Start Date
+                            {getSortIcon("startDate")}
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => requestSort("endDate")}
+                        >
+                          {/* Wrap text and icon for flex alignment */}
+                          <div className="flex items-center">
+                            End Date
+                            {getSortIcon("endDate")}
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 text-right"
+                          onClick={() => requestSort("totalDays")}
+                        >
+                          {/* Wrap text and icon for flex alignment (justify-end for right align) */}
+                          <div className="flex items-center justify-end">
+                            Days Off
+                            {getSortIcon("totalDays")}
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 text-right"
+                          onClick={() => requestSort("vacationDaysUsed")}
+                        >
+                          {/* Wrap text and icon for flex alignment (justify-end for right align) */}
+                          <div className="flex items-center justify-end">
+                            Vacation Days
+                            {getSortIcon("vacationDaysUsed")}
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer hover:bg-muted/50 text-right"
+                          onClick={() => requestSort("efficiency")}
+                        >
+                          {/* Wrap text and icon for flex alignment (justify-end for right align) */}
+                          <div className="flex items-center justify-end">
+                            Efficiency
+                            {getSortIcon("efficiency")}
+                          </div>
+                        </TableHead>
+                        <TableHead>Includes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedVacationPeriods.length > 0 ? (
+                        sortedVacationPeriods.map((period, index) => {
+                          const efficiency =
+                            period.vacationDaysUsed > 0
+                              ? period.totalDays / period.vacationDaysUsed
+                              : 0;
+                          return (
+                            <TableRow key={index}>
+                              <TableCell className="font-medium">
+                                {format(
+                                  new Date(period.startDate),
+                                  "MMM d, yyyy"
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {format(
+                                  new Date(period.endDate),
+                                  "MMM d, yyyy"
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {period.totalDays}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {period.vacationDaysUsed}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {efficiency.toFixed(2)}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {period.includes.map((item, i) => (
+                                    <Badge
+                                      key={i}
+                                      variant="secondary"
+                                      className={cn(
+                                        "font-normal text-xs px-1.5 py-0.5", // Smaller badge
+                                        item.type === "holiday" &&
+                                          "bg-red-100 text-red-900 border-red-200",
+                                        item.type === "company" &&
+                                          "bg-purple-100 text-purple-900 border-purple-200",
+                                        item.type === "weekend" &&
+                                          "bg-gray-100 text-gray-800 border-gray-200"
+                                      )}
+                                      title={
+                                        item.type === "holiday"
+                                          ? item.name
+                                          : item.type
+                                      } // Tooltip for name/type
+                                    >
+                                      {item.type === "holiday" && (
+                                        <CalendarDays className="h-2.5 w-2.5 mr-0.5" />
+                                      )}
+                                      {item.type === "company" && (
+                                        <Building className="h-2.5 w-2.5 mr-0.5" />
+                                      )}
+                                      {item.type === "weekend"
+                                        ? "W/E"
+                                        : item.type === "holiday"
+                                        ? "Hol"
+                                        : "Comp"}
+                                    </Badge>
+                                  ))}
+                                  {period.isCompanyVacation && (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-purple-100 text-purple-900 border-purple-200 text-xs px-1.5 py-0.5"
+                                      title="Company Designated Vacation"
+                                    >
+                                      <Building className="h-2.5 w-2.5 mr-0.5" />{" "}
+                                      Comp
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-24 text-center">
+                            No vacation periods planned.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             </TabsContent>
 

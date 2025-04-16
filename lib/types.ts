@@ -38,4 +38,5 @@ export interface VacationPlan {
   companyVacationDays: string[];
   userMandatoryVacationDays: string[];
   userMandatoryDaysCost: number;
+  workdayNumbers: number[];
 }

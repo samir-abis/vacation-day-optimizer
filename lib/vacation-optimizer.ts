@@ -308,8 +308,9 @@ export function calculateOptimalVacationPlan(
     ),
     totalVacationDaysUsed,
     companyVacationDaysCost,
-    userMandatoryDaysCost, // Add user cost to plan
+    userMandatoryDaysCost,
     optimizerBudget,
+    workdayNumbers,
   };
 
   // Add final logging for the returned plan object

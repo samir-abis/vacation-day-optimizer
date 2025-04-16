@@ -136,6 +136,7 @@ export default function VacationResults({ plan }: VacationResultsProps) {
     totalVacationDaysUsed,
     companyVacationDaysCost,
     optimizerBudget,
+    workdayNumbers,
   } = plan;
 
   console.log(
@@ -150,6 +151,10 @@ export default function VacationResults({ plan }: VacationResultsProps) {
   console.log(
     "[VacationResults] Received plan.companyVacationDays:",
     companyVacationDays
+  );
+  console.log(
+    "[VacationResults] Received plan.workdayNumbers:",
+    workdayNumbers
   );
 
   // Create Sets of LOCAL ISO date strings for efficient lookup
@@ -260,6 +265,9 @@ export default function VacationResults({ plan }: VacationResultsProps) {
     const isRemoteWorkday = remoteSet.has(currentLocalISODateString);
     const isCompanyVacationDay = companySet.has(currentLocalISODateString);
 
+    // Determine if it's a NON-working day
+    const isNonWorkday = !workdayNumbers.includes(date.getDay());
+
     let dayClassName = "";
     let tooltipContent = "";
     let IconComponent: React.ElementType | null = null;
@@ -287,14 +295,19 @@ export default function VacationResults({ plan }: VacationResultsProps) {
       tooltipContent = "Remote Workday";
       IconComponent = Briefcase;
       hasTooltip = true;
+    } else if (isNonWorkday && !isOutsideMonth) {
+      dayClassName = "text-muted-foreground opacity-50";
+      // Optionally add a tooltip for clarity
+      // tooltipContent = "Workday";
+      // hasTooltip = true;
     }
 
     const dayElement = (
       <div
         className={cn(
           "flex flex-col items-center justify-center w-full h-14 p-1 text-center relative rounded-md transition-colors",
-          dayClassName,
-          isOutsideMonth ? "text-muted-foreground opacity-50" : "",
+          dayClassName, // Apply the determined class
+          isOutsideMonth ? "text-muted-foreground opacity-50" : "", // Keep outside month styling separate
           propsClassName
         )}
       >

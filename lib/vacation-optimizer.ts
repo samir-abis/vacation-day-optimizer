@@ -1,7 +1,10 @@
 import { Holiday } from "./holidays";
-import { VacationPeriod, CompanyVacationDay, VacationPlan } from "./types";
+import { VacationPeriod, VacationPlan, VacationDay } from "./types";
 import { getAllWorkdays, isRemoteDay, addDays } from "./date-utils";
-import { findOptimalVacationPeriods } from "./period-strategies";
+import {
+  findOptimalVacationPeriods,
+  PotentialPeriod,
+} from "./period-strategies";
 
 function groupHolidaysByMonth(holidays: Holiday[]): {
   [month: number]: Holiday[];
@@ -58,9 +61,14 @@ export function calculateOptimalVacationPlan(
   allFetchedHolidays: Holiday[],
   workdayNumbers: number[],
   remoteWorkdays: number[] = [],
-  companyVacationInputDays: CompanyVacationDay[] = [],
+  companyVacationInputDays: VacationDay[] = [],
+  userMandatoryInputDays: VacationDay[] = [],
   lookaheadDays: number = 60
 ): VacationPlan {
+  console.log(
+    "[Optimizer] Received userMandatoryInputDays:",
+    userMandatoryInputDays
+  );
   // --- Date Range Setup ---
   const optimizationStartDate = new Date(initialStartDate);
   const optimizationEndDate = new Date(initialEndDate);
@@ -153,15 +161,30 @@ export function calculateOptimalVacationPlan(
     `[Optimizer] Processed Company Vacation: ${companyVacationDates.size} dates costing ${companyVacationDaysCost} days.`
   );
 
+  // --- User Mandatory Vacation Day Processing ---
+  const { userMandatoryDates, userMandatoryDaysCost } =
+    processUserMandatoryVacationDays(
+      userMandatoryInputDays,
+      workdaysInCalculationRange,
+      holidayDateStrings,
+      allRemoteWorkdayDates,
+      companyVacationDates
+    );
+  console.log(
+    `[Optimizer] Processed User Mandatory Vacation: ${userMandatoryDates.size} dates costing ${userMandatoryDaysCost} days.`
+  );
+
   // --- Prepare Available Workdays for Optimization ---
   // Filter workdays within the optimization range, excluding holidays, company days, and remote days
+  // AND excluding user mandatory days
   const availableWorkdaysForOptimizer = workdaysInCalculationRange.filter(
     (day: Date) => {
       const dateStr = day.toISOString().split("T")[0];
       const isHoliday = holidayDateStrings.has(dateStr);
       const isCompanyDay = companyVacationDates.has(dateStr);
+      const isUserMandatoryDay = userMandatoryDates.has(dateStr);
       const isRemote = allRemoteWorkdayDates.has(dateStr); // Check against the full set
-      return !isHoliday && !isCompanyDay && !isRemote;
+      return !isHoliday && !isCompanyDay && !isUserMandatoryDay && !isRemote;
     }
   );
   console.log(
@@ -169,11 +192,18 @@ export function calculateOptimalVacationPlan(
   );
 
   // --- Optimization ---
-  const vacationDaysBudgetForOptimizer = remainingVacationDays;
+  // Adjust budget by subtracting pre-allocated company and user days
+  const optimizerBudget = Math.max(
+    0,
+    remainingVacationDays - companyVacationDaysCost - userMandatoryDaysCost
+  );
+  console.log(
+    `[Optimizer] Original budget: ${remainingVacationDays}, Company cost: ${companyVacationDaysCost}, User cost: ${userMandatoryDaysCost}, Effective budget for optimizer: ${optimizerBudget}`
+  );
 
-  const finalPeriods = findOptimalVacationPeriods(
+  const finalPeriods: PotentialPeriod[] = findOptimalVacationPeriods(
     availableWorkdaysForOptimizer,
-    vacationDaysBudgetForOptimizer,
+    optimizerBudget, // Pass the adjusted budget
     relevantHolidays,
     workdayNumbers,
     holidaysByMonth,
@@ -193,7 +223,7 @@ export function calculateOptimalVacationPlan(
     if (!period.isCompanyVacation) {
       totalDaysOff += period.totalDays;
       calculatedOptimizerCost += period.vacationDays.length;
-      period.vacationDays.forEach((day) => {
+      period.vacationDays.forEach((day: Date) => {
         recommendedDaysUTCSet.add(day.toISOString().split("T")[0]);
       });
     }
@@ -204,15 +234,19 @@ export function calculateOptimalVacationPlan(
     recommendedDaysUTCSet.add(dateStr);
   });
 
-  // Combine optimizer cost and pre-calculated company cost
+  // Add user mandatory vacation days to the recommended list
+  userMandatoryDates.forEach((dateStr: string) => {
+    recommendedDaysUTCSet.add(dateStr);
+  });
+
+  // Combine optimizer cost and pre-calculated company/user cost
   const totalVacationDaysUsed =
-    calculatedOptimizerCost + companyVacationDaysCost;
+    calculatedOptimizerCost + companyVacationDaysCost + userMandatoryDaysCost;
 
   const recommendedDays = Array.from(recommendedDaysUTCSet)
     .map((dateStr) => new Date(dateStr + "T00:00:00.000Z"))
     .sort((a, b) => a.getTime() - b.getTime());
 
-  const optimizerBudget = remainingVacationDays;
   const actualRemainingBudget = Math.max(
     0,
     optimizerBudget - calculatedOptimizerCost
@@ -223,23 +257,24 @@ export function calculateOptimalVacationPlan(
   );
   console.log(`[Optimizer] Final Plan - Total Days Off: ${totalDaysOff}`);
   console.log(
-    `[Optimizer] Final Plan - Total Vacation Used (Planned + Company): ${totalVacationDaysUsed}`
+    `[Optimizer] Final Plan - Total Vacation Used (Planned + Company + User): ${totalVacationDaysUsed}`
   );
   console.log(
     `[Optimizer] Final Plan - Company Vacation Cost: ${companyVacationDaysCost}`
   );
   console.log(
-    `[Optimizer] Final Plan - Optimizer Budget Used: ${
-      optimizerBudget - actualRemainingBudget
-    }`
+    `[Optimizer] Final Plan - User Mandatory Vacation Cost: ${userMandatoryDaysCost}`
   );
   console.log(
-    `[Optimizer] Final Plan - Remaining Budget: ${actualRemainingBudget}`
+    `[Optimizer] Final Plan - Optimizer Budget Used: ${calculatedOptimizerCost}`
+  );
+  console.log(
+    `[Optimizer] Final Plan - Remaining Budget (after all deductions): ${actualRemainingBudget}`
   );
 
   // --- Construct Final Plan Object ---
   const plan: VacationPlan = {
-    recommendedDays: recommendedDays.map((d) => d.toISOString()),
+    recommendedDays: recommendedDays.map((d: Date) => d.toISOString()),
     totalDaysOff, // Reflects only optimizer periods' days off
     remainingVacationDays: actualRemainingBudget,
     // Map final periods, removing properties not in VacationPlanPeriod
@@ -249,10 +284,12 @@ export function calculateOptimalVacationPlan(
       totalDays: p.totalDays,
       vacationDaysUsed: p.vacationDays.length,
       // Map vacationDays Date[] to string[]
-      vacationDays: p.vacationDays.map((d) => d.toISOString()),
+      vacationDays: p.vacationDays.map((d: Date) => d.toISOString()),
       efficiency: p.efficiency,
       includes: p.includes,
-      isCompanyVacation: p.isCompanyVacation || false,
+      isCompanyVacation: !!p.isCompanyVacation,
+      score: p.score,
+      type: p.type,
     })),
     holidays: displayHolidays.map((h) => ({
       date: h.date.toISOString(),
@@ -265,8 +302,13 @@ export function calculateOptimalVacationPlan(
     companyVacationDays: Array.from(companyVacationDates).map((d) =>
       new Date(d + "T00:00:00.000Z").toISOString()
     ),
+    // Add user mandatory days to the plan output
+    userMandatoryVacationDays: Array.from(userMandatoryDates).map((d) =>
+      new Date(d + "T00:00:00.000Z").toISOString()
+    ),
     totalVacationDaysUsed,
     companyVacationDaysCost,
+    userMandatoryDaysCost, // Add user cost to plan
     optimizerBudget,
   };
 
@@ -279,8 +321,10 @@ export function calculateOptimalVacationPlan(
     holidaysCount: plan.holidays.length,
     remoteWorkdaysCount: plan.remoteWorkdays.length,
     companyVacationDaysCount: plan.companyVacationDays.length,
+    userMandatoryVacationDaysCount: plan.userMandatoryVacationDays.length,
     totalVacationDaysUsed: plan.totalVacationDaysUsed,
     companyVacationDaysCost: plan.companyVacationDaysCost,
+    userMandatoryDaysCost: plan.userMandatoryDaysCost,
     optimizerBudget: plan.optimizerBudget,
   });
   // Log first few holidays and remote days being returned
@@ -298,8 +342,85 @@ export function calculateOptimalVacationPlan(
   return plan;
 }
 
+// --- Function to process user mandatory vacation days ---
+function processUserMandatoryVacationDays(
+  userInputDays: VacationDay[],
+  workdaysInRange: Date[],
+  holidayDateStrings: Set<string>,
+  remoteWorkdayDateStrings: Set<string>,
+  companyVacationDateStrings: Set<string> // Avoid double-counting cost if also a company day
+): { userMandatoryDates: Set<string>; userMandatoryDaysCost: number } {
+  console.log(
+    "[Optimizer] processUserMandatoryVacationDays received:",
+    userInputDays
+  );
+  const userMandatoryDates = new Set<string>();
+  let userMandatoryDaysCost = 0;
+
+  if (!userInputDays || userInputDays.length === 0) {
+    return { userMandatoryDates, userMandatoryDaysCost };
+  }
+
+  console.log(
+    `[Optimizer] processUserMandatoryVacationDays: Processing ${userInputDays.length} input days.`
+  );
+
+  userInputDays.forEach((vacationDay) => {
+    const year = parseInt(vacationDay.date.substring(0, 4), 10);
+    const month = parseInt(vacationDay.date.substring(5, 7), 10) - 1;
+    const day = parseInt(vacationDay.date.substring(8, 10), 10);
+    const date = new Date(Date.UTC(year, month, day));
+    const dateStr = date.toISOString().split("T")[0];
+    const duration = vacationDay.duration;
+
+    // Check if it's a workday within the provided range
+    const isWorkdayCheck = workdaysInRange.some(
+      (wd) => wd.toISOString().split("T")[0] === dateStr
+    );
+    const isHoliday = holidayDateStrings.has(dateStr);
+    const isRemote = remoteWorkdayDateStrings.has(dateStr);
+    const isAlsoCompanyDay = companyVacationDateStrings.has(dateStr);
+
+    console.log(
+      `[Optimizer] processUserMandatoryVacationDays Check: Input=${vacationDay.date}, CheckDateStr=${dateStr}, Duration=${duration}, IsWorkday=${isWorkdayCheck}, IsHoliday=${isHoliday}, IsRemote=${isRemote}, IsCompanyDay=${isAlsoCompanyDay}`
+    );
+
+    // Add to the set regardless, as it's a user-mandated day off
+    userMandatoryDates.add(dateStr);
+
+    // Only count cost if it's a workday that isn't also a holiday, remote day, OR an already accounted-for company day
+    if (!isHoliday && !isAlsoCompanyDay) {
+      // We assume if the user explicitly adds a day here, they intend to use vacation budget,
+      // even if it's not a standard workday or a remote day (they might have specific plans).
+      userMandatoryDaysCost += duration;
+      console.log(
+        `  - User mandatory day ${dateStr} cost added: ${duration}. IsWorkday=${isWorkdayCheck}, IsRemote=${isRemote}`
+      );
+    } else if (isAlsoCompanyDay) {
+      console.log(
+        `  - Note: User mandatory day ${dateStr} cost already covered by company vacation.`
+      );
+    } else if (isHoliday) {
+      console.log(
+        `  - Note: User mandatory day ${dateStr} identified but cost is 0 (Holiday).`
+      );
+    }
+  });
+
+  console.log(
+    "[Optimizer] processUserMandatoryVacationDays Output Dates (Set):",
+    Array.from(userMandatoryDates)
+  );
+  console.log(
+    "[Optimizer] processUserMandatoryVacationDays Calculated Cost:",
+    userMandatoryDaysCost
+  );
+
+  return { userMandatoryDates, userMandatoryDaysCost };
+}
+
 function processCompanyVacationDays(
-  companyVacationInputDays: CompanyVacationDay[],
+  companyVacationInputDays: VacationDay[],
   workdaysInRange: Date[],
   holidayDateStrings: Set<string>,
   remoteWorkdayDateStrings: Set<string>

@@ -16,6 +16,7 @@ import {
   Building,
   Plane,
   ArrowUpDown,
+  HelpCircle,
 } from "lucide-react";
 import { useResponsiveCalendarMonths } from "@/hooks/use-responsive-calendar-months";
 import {
@@ -76,7 +77,9 @@ type SortableKeys =
   | "endDate"
   | "totalDays"
   | "vacationDaysUsed"
-  | "efficiency";
+  | "efficiency"
+  | "score"
+  | "type";
 
 // Define a custom interface extending DayProps
 interface CustomDayProps extends DayProps {
@@ -112,6 +115,14 @@ function StatCard({
     </Card>
   );
 }
+
+// --- Helper: Map period types to display names ---
+const periodTypeDisplayNames: Record<string, string> = {
+  bridge: "Gap Bridge",
+  "holiday-link": "Holiday Link",
+  "long-weekend": "Long Weekend",
+  "holiday-bridge": "Holiday Bridge",
+};
 
 export default function VacationResults({ plan }: VacationResultsProps) {
   const {
@@ -342,8 +353,8 @@ export default function VacationResults({ plan }: VacationResultsProps) {
 
   // State for sorting the 'All Periods' table
   const [sortConfig, setSortConfig] = useState<SortConfig>({
-    key: "startDate",
-    direction: "ascending",
+    key: "score",
+    direction: "descending",
   });
 
   // Memoized sorted data for the table
@@ -368,8 +379,21 @@ export default function VacationResults({ plan }: VacationResultsProps) {
           aValue = new Date(a[sortConfig.key]).getTime();
           bValue = new Date(b[sortConfig.key]).getTime();
         } else {
-          aValue = a[sortConfig.key];
-          bValue = b[sortConfig.key];
+          aValue = a[sortConfig.key] as number;
+          bValue = b[sortConfig.key] as number;
+        }
+
+        // Handle 'type' sorting (string comparison)
+        if (sortConfig.key === "type") {
+          const typeA = a.type || "";
+          const typeB = b.type || "";
+          if (typeA < typeB) {
+            return sortConfig.direction === "ascending" ? -1 : 1;
+          }
+          if (typeA > typeB) {
+            return sortConfig.direction === "ascending" ? 1 : -1;
+          }
+          return 0;
         }
 
         if (aValue < bValue) {
@@ -414,6 +438,81 @@ export default function VacationResults({ plan }: VacationResultsProps) {
   return (
     <div className="space-y-8">
       {/* Results Summary Section - restructured container */}
+      {/* Calendar View Section - Fixed structure for responsive months */}
+      <div className="rounded-lg border border-primary/10 bg-card text-card-foreground shadow-sm relative overflow-hidden">
+        {/* Gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5 pointer-events-none"></div>
+
+        {/* Content with padding */}
+        <div className="relative z-10 p-6">
+          <h2 className="text-2xl font-semibold leading-none tracking-tight text-primary mb-4">
+            Calendar View
+          </h2>
+          {/* Legend */}
+          <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-2 p-3 bg-card/50 rounded-md border border-primary/10 mb-4">
+            <div className="flex items-center">
+              <span className="inline-block w-3 h-3 bg-green-100 rounded-sm mr-1.5"></span>
+              Planned Vacation
+            </div>
+            <div className="flex items-center">
+              <span className="inline-block w-3 h-3 bg-red-100 rounded-sm mr-1.5"></span>
+              Holiday
+            </div>
+            <div className="flex items-center">
+              <span className="inline-block w-3 h-3 bg-blue-100 rounded-sm mr-1.5"></span>
+              Remote Work
+            </div>
+            <div className="flex items-center">
+              <span className="inline-block w-3 h-3 bg-purple-100 rounded-sm mr-1.5"></span>
+              Company Vacation
+            </div>
+          </div>
+
+          {/* Wrap Calendar container with TooltipProvider - IMPORTANT: this div needs the ref for responsive sizing */}
+          <TooltipProvider>
+            <div
+              ref={containerRef}
+              className="w-full overflow-hidden flex justify-center"
+            >
+              <Calendar
+                mode="multiple"
+                selected={parsedRecommendedDays}
+                month={currentDisplayMonth}
+                onMonthChange={setCurrentDisplayMonth}
+                numberOfMonths={numberOfMonths}
+                pagedNavigation
+                fixedWeeks
+                className="rounded-md border border-primary/10 p-3 bg-card text-card-foreground"
+                classNames={{
+                  months:
+                    "flex flex-col items-center sm:flex-row sm:items-start space-y-4 sm:space-x-4 sm:space-y-0",
+                  month: "space-y-4",
+                  caption_label: "text-base font-medium text-primary",
+                  nav_button: "h-8 w-8 text-primary hover:text-primary/80",
+                  nav_button_previous: "absolute left-1 top-1",
+                  nav_button_next: "absolute right-1 top-1",
+                  head_cell:
+                    "w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-muted-foreground rounded-md font-normal text-[0.8rem]",
+                  cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14",
+                  day: "h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 p-0 font-normal aria-selected:opacity-100",
+                  day_selected:
+                    "bg-transparent text-primary-foreground hover:bg-transparent focus:bg-transparent",
+                  day_today: "bg-accent text-accent-foreground",
+                  day_outside: "text-muted-foreground opacity-50",
+                  day_disabled: "text-muted-foreground opacity-50",
+                  day_range_middle:
+                    "aria-selected:bg-accent aria-selected:text-accent-foreground",
+                  day_hidden: "invisible",
+                }}
+                components={{
+                  Day: renderDay,
+                }}
+              />
+            </div>
+          </TooltipProvider>
+        </div>
+      </div>
+
       <div className="rounded-lg border border-primary/10 bg-card text-card-foreground shadow-sm relative overflow-hidden">
         {/* Remove the gradient div from inside and place it directly inside the card */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5 pointer-events-none"></div>
@@ -484,9 +583,20 @@ export default function VacationResults({ plan }: VacationResultsProps) {
 
                 <TabsContent value="all">
                   <div className="space-y-4">
-                    <h3 className="text-lg font-medium mb-4">
+                    <h3 className="text-lg font-medium mb-2">
                       All Planned Vacation Periods
                     </h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Periods are ranked by a score balancing efficiency, total
+                      break length, and holiday inclusion. Higher scores are
+                      prioritized.
+                      <br />
+                      <span className="italic">
+                        Note: Break start/end dates show the full continuous
+                        time off, including weekends/holidays, and may appear to
+                        overlap. The actual vacation days used are distinct.
+                      </span>
+                    </p>
                     <div className="rounded-md border">
                       <Table>
                         <TableHeader>
@@ -495,9 +605,8 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                               className="cursor-pointer hover:bg-muted/50"
                               onClick={() => requestSort("startDate")}
                             >
-                              {/* Wrap text and icon for flex alignment */}
                               <div className="flex items-center">
-                                Start Date
+                                Break Start
                                 {getSortIcon("startDate")}
                               </div>
                             </TableHead>
@@ -505,9 +614,8 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                               className="cursor-pointer hover:bg-muted/50"
                               onClick={() => requestSort("endDate")}
                             >
-                              {/* Wrap text and icon for flex alignment */}
                               <div className="flex items-center">
-                                End Date
+                                Break End
                                 {getSortIcon("endDate")}
                               </div>
                             </TableHead>
@@ -515,7 +623,6 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                               className="cursor-pointer hover:bg-muted/50 text-right"
                               onClick={() => requestSort("totalDays")}
                             >
-                              {/* Wrap text and icon for flex alignment (justify-end for right align) */}
                               <div className="flex items-center justify-end">
                                 Days Off
                                 {getSortIcon("totalDays")}
@@ -525,7 +632,6 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                               className="cursor-pointer hover:bg-muted/50 text-right"
                               onClick={() => requestSort("vacationDaysUsed")}
                             >
-                              {/* Wrap text and icon for flex alignment (justify-end for right align) */}
                               <div className="flex items-center justify-end">
                                 Vacation Days
                                 {getSortIcon("vacationDaysUsed")}
@@ -535,10 +641,39 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                               className="cursor-pointer hover:bg-muted/50 text-right"
                               onClick={() => requestSort("efficiency")}
                             >
-                              {/* Wrap text and icon for flex alignment (justify-end for right align) */}
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="flex items-center justify-end">
+                                      Efficiency
+                                      {getSortIcon("efficiency")}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" align="end">
+                                    <p className="max-w-xs text-xs">
+                                      Days off per vacation day used. Selection
+                                      also considers total length, score, etc.
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50 text-right"
+                              onClick={() => requestSort("score")}
+                            >
                               <div className="flex items-center justify-end">
-                                Efficiency
-                                {getSortIcon("efficiency")}
+                                Score
+                                {getSortIcon("score")}
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort("type")}
+                            >
+                              <div className="flex items-center">
+                                Type
+                                {getSortIcon("type")}
                               </div>
                             </TableHead>
                             <TableHead>Includes</TableHead>
@@ -551,6 +686,11 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                                 period.vacationDaysUsed > 0
                                   ? period.totalDays / period.vacationDaysUsed
                                   : 0;
+                              const score =
+                                period.score !== undefined
+                                  ? period.score.toFixed(1)
+                                  : "N/A";
+                              const type = period.type || "N/A";
                               return (
                                 <TableRow key={index}>
                                   <TableCell className="font-medium">
@@ -569,10 +709,41 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                                     {period.totalDays}
                                   </TableCell>
                                   <TableCell className="text-right">
-                                    {period.vacationDaysUsed}
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="cursor-help underline decoration-dotted">
+                                            {period.vacationDaysUsed}
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="end">
+                                          <p className="text-xs font-medium mb-1">
+                                            Vacation Days Used:
+                                          </p>
+                                          <ul className="list-disc pl-4 text-xs">
+                                            {(period.vacationDays || []).map(
+                                              (day) => (
+                                                <li key={day}>
+                                                  {format(
+                                                    new Date(day),
+                                                    "MMM d, yyyy"
+                                                  )}
+                                                </li>
+                                              )
+                                            )}
+                                          </ul>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
                                   </TableCell>
                                   <TableCell className="text-right">
                                     {efficiency.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {score}
+                                  </TableCell>
+                                  <TableCell>
+                                    {periodTypeDisplayNames[type] || type}
                                   </TableCell>
                                   <TableCell>
                                     <div className="flex flex-wrap gap-1">
@@ -626,7 +797,7 @@ export default function VacationResults({ plan }: VacationResultsProps) {
                           ) : (
                             <TableRow>
                               <TableCell
-                                colSpan={6}
+                                colSpan={8}
                                 className="h-24 text-center"
                               >
                                 No vacation periods planned.
@@ -659,80 +830,6 @@ export default function VacationResults({ plan }: VacationResultsProps) {
           </div>
         </div>
       </div>
-
-      {/* Calendar View Section - Fixed structure for responsive months */}
-      <div className="rounded-lg border border-primary/10 bg-card text-card-foreground shadow-sm relative overflow-hidden">
-        {/* Gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5 pointer-events-none"></div>
-
-        {/* Content with padding */}
-        <div className="relative z-10 p-6">
-          <h2 className="text-2xl font-semibold leading-none tracking-tight text-primary mb-4">
-            Calendar View
-          </h2>
-          {/* Legend */}
-          <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-2 p-3 bg-card/50 rounded-md border border-primary/10 mb-4">
-            <div className="flex items-center">
-              <span className="inline-block w-3 h-3 bg-green-100 rounded-sm mr-1.5"></span>
-              Planned Vacation
-            </div>
-            <div className="flex items-center">
-              <span className="inline-block w-3 h-3 bg-red-100 rounded-sm mr-1.5"></span>
-              Holiday
-            </div>
-            <div className="flex items-center">
-              <span className="inline-block w-3 h-3 bg-blue-100 rounded-sm mr-1.5"></span>
-              Remote Work
-            </div>
-            <div className="flex items-center">
-              <span className="inline-block w-3 h-3 bg-purple-100 rounded-sm mr-1.5"></span>
-              Company Vacation
-            </div>
-          </div>
-
-          {/* Wrap Calendar container with TooltipProvider - IMPORTANT: this div needs the ref for responsive sizing */}
-          <TooltipProvider>
-            <div
-              ref={containerRef}
-              className="w-full overflow-hidden flex justify-center"
-            >
-              <Calendar
-                mode="multiple"
-                selected={parsedRecommendedDays}
-                month={currentDisplayMonth}
-                onMonthChange={setCurrentDisplayMonth}
-                numberOfMonths={numberOfMonths}
-                pagedNavigation
-                className="rounded-md border border-primary/10 p-3 bg-card text-card-foreground"
-                classNames={{
-                  months:
-                    "flex flex-col items-center sm:flex-row sm:items-start space-y-4 sm:space-x-4 sm:space-y-0",
-                  month: "space-y-4",
-                  caption_label: "text-base font-medium text-primary",
-                  nav_button: "h-8 w-8 text-primary hover:text-primary/80",
-                  nav_button_previous: "absolute left-1 top-1",
-                  nav_button_next: "absolute right-1 top-1",
-                  head_cell:
-                    "w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 text-muted-foreground rounded-md font-normal text-[0.8rem]",
-                  cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14",
-                  day: "h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 p-0 font-normal aria-selected:opacity-100",
-                  day_selected:
-                    "bg-transparent text-primary-foreground hover:bg-transparent focus:bg-transparent",
-                  day_today: "bg-accent text-accent-foreground",
-                  day_outside: "text-muted-foreground opacity-50",
-                  day_disabled: "text-muted-foreground opacity-50",
-                  day_range_middle:
-                    "aria-selected:bg-accent aria-selected:text-accent-foreground",
-                  day_hidden: "invisible",
-                }}
-                components={{
-                  Day: renderDay,
-                }}
-              />
-            </div>
-          </TooltipProvider>
-        </div>
-      </div>
     </div>
   );
 }
@@ -751,6 +848,10 @@ function VacationPeriodCard({ period }: VacationPeriodCardProps) {
     period.vacationDaysUsed > 0
       ? period.totalDays / period.vacationDaysUsed
       : 0;
+
+  // Access score and type directly if they exist on the period object
+  const score = period.score !== undefined ? period.score.toFixed(1) : "N/A";
+  const type = period.type || "N/A";
 
   return (
     <Card className="overflow-hidden border-primary/10 hover:border-primary/30 transition-colors relative">
@@ -786,8 +887,23 @@ function VacationPeriodCard({ period }: VacationPeriodCardProps) {
                   {period.vacationDaysUsed} vacation days
                 </span>
                 <span className="mx-1">·</span>
-                <span className="font-medium text-accent">
+                <span
+                  className="font-medium text-foreground/80"
+                  title={`Score: ${score}`}
+                >
                   Efficiency: {efficiency.toFixed(2)}
+                </span>
+                <span className="mx-1">·</span>
+                <span
+                  className="font-medium text-foreground/80"
+                  title={`Score: ${score}`}
+                >
+                  Score: {score}
+                </span>
+                <span className="mx-1">·</span>
+                <span className="font-medium text-foreground/80">
+                  {/* Use display name in card as well */}
+                  Type: {periodTypeDisplayNames[type] || type}
                 </span>
               </div>
             </div>

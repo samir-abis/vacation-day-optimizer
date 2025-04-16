@@ -35,13 +35,16 @@ import {
   NagerHoliday,
 } from "@/lib/holidays";
 import { calculateOptimalVacationPlan } from "@/lib/vacation-optimizer";
-import { VacationPlan, CompanyVacationDay } from "@/lib/types";
+import { VacationPlan, VacationDay } from "@/lib/types";
 import VacationResults from "./vacation-results";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { CalendarIcon, Trash2 } from "lucide-react";
-import { SelectSingleEventHandler } from "react-day-picker";
+import {
+  SelectSingleEventHandler,
+  SelectMultipleEventHandler,
+} from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
@@ -153,15 +156,25 @@ export default function VacationPlanner() {
   const [isCalculating, setIsCalculating] = useState<boolean>(false);
   const [calculationError, setCalculationError] = useState<string | null>(null);
   const [considerRemoteWork, setConsiderRemoteWork] = useState<boolean>(true);
-  const [companyVacationDays, setCompanyVacationDays] = useState<
-    CompanyVacationDay[]
-  >([]);
+  const [companyVacationDays, setCompanyVacationDays] = useState<VacationDay[]>(
+    []
+  );
   const [selectedCompanyDate, setSelectedCompanyDate] = useState<
     Date | undefined
   >(undefined);
   const [isCompanyCalendarOpen, setIsCompanyCalendarOpen] = useState(false);
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [isStartCalendarOpen, setIsStartCalendarOpen] = useState(false);
+
+  // --- User Mandatory Vacation State ---
+  const [userMandatoryVacationDays, setUserMandatoryVacationDays] = useState<
+    VacationDay[]
+  >([]);
+  const [selectedUserDate, setSelectedUserDate] = useState<Date | undefined>(
+    undefined
+  );
+  const [isUserCalendarOpen, setIsUserCalendarOpen] = useState(false);
+  // --- End User Mandatory Vacation State ---
 
   // Country & Subdivision State
   const [availableSubdivisions, setAvailableSubdivisions] = useState<
@@ -300,6 +313,14 @@ export default function VacationPlanner() {
         if (typeof parsedState.startDate === "string") {
           setStartDate(safeParseDate(parsedState.startDate));
         }
+        // Load user mandatory vacation days
+        if (Array.isArray(parsedState.userMandatoryVacationDays)) {
+          console.log(
+            "[Planner] Loading userMandatoryVacationDays from localStorage:",
+            parsedState.userMandatoryVacationDays
+          );
+          setUserMandatoryVacationDays(parsedState.userMandatoryVacationDays);
+        }
         // Load subdivision *after* potential country load and subdivision fetch
         if (typeof parsedState.selectedSubdivisionCode === "string") {
           // Check if the saved subdivision is valid for the (potentially loaded) country
@@ -332,9 +353,11 @@ export default function VacationPlanner() {
         year,
         considerRemoteWork,
         companyVacationDays,
+        userMandatoryVacationDays, // Added dependency
         startDate: startDate ? startDate.toISOString() : undefined,
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+      console.log("[Planner] Saved state to localStorage:", stateToSave);
     } catch (error) {
       console.error("Failed to save state to localStorage:", error);
     }
@@ -348,6 +371,7 @@ export default function VacationPlanner() {
     year,
     considerRemoteWork,
     companyVacationDays,
+    userMandatoryVacationDays, // Added dependency
     startDate,
     isFetchingCountries, // Include to ensure saving happens after load
   ]);
@@ -380,22 +404,16 @@ export default function VacationPlanner() {
   const addCompanyVacationDay = (duration: number) => {
     if (!selectedCompanyDate) return;
 
-    // Format the date to YYYY-MM-DD string using local date components
     const dateStr = getLocalISODateString(selectedCompanyDate);
-
-    // Check if this date is already added
     const exists = companyVacationDays.some((day) => day.date === dateStr);
 
     if (!exists && dateStr) {
       setCompanyVacationDays([
         ...companyVacationDays,
-        {
-          date: dateStr,
-          duration: duration,
-        },
+        { date: dateStr, duration: duration },
       ]);
-      setSelectedCompanyDate(undefined);
     }
+    setSelectedCompanyDate(undefined);
   };
 
   const removeCompanyVacationDay = (dateToRemove: string) => {
@@ -403,6 +421,31 @@ export default function VacationPlanner() {
       companyVacationDays.filter((day) => day.date !== dateToRemove)
     );
   };
+
+  // --- Functions for User Mandatory Vacation ---
+  const addUserMandatoryVacationDay = (duration: number) => {
+    if (!selectedUserDate) return;
+
+    const dateStr = getLocalISODateString(selectedUserDate);
+    const exists = userMandatoryVacationDays.some(
+      (day) => day.date === dateStr
+    );
+
+    if (!exists && dateStr) {
+      setUserMandatoryVacationDays([
+        ...userMandatoryVacationDays,
+        { date: dateStr, duration },
+      ]);
+    }
+    setSelectedUserDate(undefined);
+  };
+
+  const removeUserMandatoryVacationDay = (dateToRemove: string) => {
+    setUserMandatoryVacationDays(
+      userMandatoryVacationDays.filter((day) => day.date !== dateToRemove)
+    );
+  };
+  // --- End Functions for User Mandatory Vacation ---
 
   const calculateVacationPlan = async () => {
     setIsCalculating(true);
@@ -506,6 +549,10 @@ export default function VacationPlanner() {
       }
 
       // 5. Calculate optimal vacation days
+      console.log(
+        "[Planner] Passing userMandatoryVacationDays to optimizer:",
+        userMandatoryVacationDays
+      );
       const result = calculateOptimalVacationPlan(
         startDate || new Date(year, 0, 1), // initialStartDate (default to Jan 1st of selected year)
         new Date(year, 11, 31), // initialEndDate (Dec 31st of selected year)
@@ -514,6 +561,7 @@ export default function VacationPlanner() {
         workdayNumbers,
         remoteWorkdayNumbers,
         companyVacationDays,
+        userMandatoryVacationDays, // Pass user mandatory days
         60 // default lookaheadDays
       );
 
@@ -774,24 +822,31 @@ export default function VacationPlanner() {
           <Separator className="bg-primary/10 my-6" />
 
           <Tabs defaultValue="workdays" className="mt-6">
-            <TabsList className="grid w-full grid-cols-3 bg-secondary/10">
+            {/* Apply flex wrap for responsiveness */}
+            <TabsList className="flex flex-wrap w-full h-auto gap-2 bg-secondary/10 p-1 rounded-lg">
               <TabsTrigger
                 value="workdays"
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                className="flex-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium"
               >
                 Your Workdays
               </TabsTrigger>
               <TabsTrigger
                 value="remote"
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                className="flex-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium"
               >
                 Remote Workdays
               </TabsTrigger>
               <TabsTrigger
                 value="company"
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                className="flex-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium"
               >
-                Company-Mandated Vacation
+                Company Vacation
+              </TabsTrigger>
+              <TabsTrigger
+                value="user"
+                className="flex-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium"
+              >
+                Your Planned Days
               </TabsTrigger>
             </TabsList>
 
@@ -915,10 +970,13 @@ export default function VacationPlanner() {
                       <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
                       {selectedCompanyDate
                         ? format(selectedCompanyDate, "PPP")
-                        : "Add a Company Vacation Day"}
+                        : "Add Company Vacation Day"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-4 space-y-4 border-primary/20">
+                    <p className="text-sm font-medium text-primary">
+                      Select company vacation dates:
+                    </p>
                     <Calendar
                       mode="single"
                       selected={selectedCompanyDate}
@@ -928,7 +986,6 @@ export default function VacationPlanner() {
                       disabled={dateFilter}
                       initialFocus
                       fixedWeeks
-                      className="rounded-md border-0"
                       classNames={{
                         months: "space-y-4",
                         month: "space-y-4",
@@ -1031,6 +1088,168 @@ export default function VacationPlanner() {
                                     className="h-8 w-8 text-accent hover:text-accent/80 hover:bg-accent/10 rounded-full"
                                     onClick={() =>
                                       removeCompanyVacationDay(day.date)
+                                    }
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="sr-only">Remove</span>
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* User Mandatory Vacation Tab */}
+            <TabsContent value="user" className="pt-4">
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-medium text-secondary">
+                    Your Planned Vacation Days
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Add specific days you already know you want to take off.
+                    These will be included in your plan and deducted from your
+                    budget.
+                  </p>
+                </div>
+
+                <Popover
+                  open={isUserCalendarOpen}
+                  onOpenChange={setIsUserCalendarOpen}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start border-primary/20"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                      {selectedUserDate
+                        ? format(selectedUserDate, "PPP")
+                        : "Add Your Planned Vacation Days"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-4 space-y-4 border-primary/20">
+                    <p className="text-sm font-medium text-primary">
+                      Select your planned vacation dates:
+                    </p>
+                    <Calendar
+                      mode="single"
+                      selected={selectedUserDate}
+                      onSelect={setSelectedUserDate as SelectSingleEventHandler}
+                      disabled={dateFilter}
+                      initialFocus
+                      fixedWeeks
+                      classNames={{
+                        months: "space-y-4",
+                        month: "space-y-4",
+                        caption:
+                          "flex justify-center pt-1 relative items-center",
+                        caption_label: "text-base font-medium text-primary",
+                        nav_button:
+                          "h-7 w-7 bg-transparent text-primary hover:bg-primary/10 rounded-full flex items-center justify-center",
+                        nav_button_previous: "absolute left-1 top-1",
+                        nav_button_next: "absolute right-1 top-1",
+                        table: "w-full border-collapse space-y-1",
+                        head_row: "flex",
+                        head_cell:
+                          "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
+                        row: "flex w-full mt-2",
+                        cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-primary/10 first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 h-9 w-9",
+                        day: "h-9 w-9 p-0 font-normal aria-selected:opacity-100 hover:bg-primary/10 rounded-full transition-colors",
+                        day_selected:
+                          "bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary rounded-full",
+                        day_today:
+                          "bg-accent/20 text-accent-foreground rounded-full border border-accent/50",
+                        day_outside: "text-muted-foreground opacity-50",
+                        day_disabled: "text-muted-foreground opacity-50",
+                        day_range_middle:
+                          "aria-selected:bg-accent aria-selected:text-accent-foreground",
+                        day_hidden: "invisible",
+                      }}
+                    />
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="user-vacation-duration"
+                        className="text-secondary-foreground"
+                      >
+                        Select Duration
+                      </Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          onClick={() => addUserMandatoryVacationDay(0.5)}
+                          disabled={!selectedUserDate}
+                          variant="outline"
+                          className="border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                        >
+                          Add ½ Day
+                        </Button>
+                        <Button
+                          onClick={() => addUserMandatoryVacationDay(1)}
+                          disabled={!selectedUserDate}
+                          className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground"
+                        >
+                          Add Full Day
+                        </Button>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                {userMandatoryVacationDays.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-base font-medium text-secondary">
+                      Your Planned Days
+                    </Label>
+                    <div className="rounded-lg border border-primary/10 overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-b-primary/10 hover:bg-primary/5">
+                            <TableHead className="text-secondary-foreground">
+                              Date
+                            </TableHead>
+                            <TableHead className="text-center text-secondary-foreground">
+                              Duration
+                            </TableHead>
+                            <TableHead className="text-right text-secondary-foreground">
+                              Actions
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {userMandatoryVacationDays
+                            .sort(
+                              (a, b) =>
+                                new Date(a.date).getTime() -
+                                new Date(b.date).getTime()
+                            )
+                            .map((day) => (
+                              <TableRow
+                                key={day.date}
+                                className="border-b-primary/10 hover:bg-primary/5"
+                              >
+                                <TableCell className="font-medium text-foreground">
+                                  {format(
+                                    new Date(day.date + "T00:00:00"),
+                                    "PPP"
+                                  )}{" "}
+                                  {/* Ensure date is parsed correctly */}
+                                </TableCell>
+                                <TableCell className="text-center text-foreground">
+                                  {day.duration} day
+                                  {day.duration !== 1 ? "s" : ""}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-accent hover:text-accent/80 hover:bg-accent/10 rounded-full"
+                                    onClick={() =>
+                                      removeUserMandatoryVacationDay(day.date)
                                     }
                                   >
                                     <Trash2 className="h-4 w-4" />

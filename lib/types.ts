@@ -10,7 +10,7 @@ export interface VacationPeriod {
   isCompanyVacation?: boolean;
 }
 
-export interface CompanyVacationDay {
+export interface VacationDay {
   date: string;
   duration: number;
 }
@@ -27,10 +27,15 @@ export interface VacationPlan {
     endDate: string;
     totalDays: number;
     vacationDaysUsed: number;
+    vacationDays?: string[];
     includes: { type: string; name?: string }[];
     isCompanyVacation: boolean;
+    score?: number;
+    type?: string;
   }[];
   holidays: { date: string; name: string }[];
   remoteWorkdays: string[];
   companyVacationDays: string[];
+  userMandatoryVacationDays: string[];
+  userMandatoryDaysCost: number;
 }

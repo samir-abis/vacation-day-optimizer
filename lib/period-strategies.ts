@@ -166,12 +166,10 @@ function calculateScore(
   );
 
   // DEBUG: Log vacation days for inspection
-  console.log(
-    `Scoring Period: ${period.startDate.toISOString().split("T")[0]} - ${
-      period.endDate.toISOString().split("T")[0]
-    }`
-  );
-  console.log(`  Vacation Days: ${Array.from(vacationDaysSet).join(", ")}`);
+  // console.log(
+  //   `Scoring Period: ${period.startDate.toISOString().split("T")[0]} - ${period.endDate.toISOString().split("T")[0]}`
+  // );
+  // console.log(`  Vacation Days: ${Array.from(vacationDaysSet).join(", ")}`);
 
   const current = new Date(period.startDate);
   const end = new Date(period.endDate);
@@ -189,18 +187,14 @@ function calculateScore(
     vacationDaysInNextYear.length * NEXT_YEAR_VACATION_PENALTY;
 
   // Debug logging for next year penalty
-  if (vacationDaysInNextYear.length > 0) {
-    console.log(
-      `  ⚠️ Penalized ${
-        vacationDaysInNextYear.length
-      } vacation days in next year: ${vacationDaysInNextYear
-        .map((d) => d.toISOString().split("T")[0])
-        .join(", ")}`
-    );
-    console.log(
-      `  ⚠️ Next year penalty: -${nextYearVacationPenalty.toFixed(2)}`
-    );
-  }
+  // if (vacationDaysInNextYear.length > 0) {
+  //   console.log(
+  //     `  ⚠️ Penalized ${vacationDaysInNextYear.length} vacation days in next year: ${vacationDaysInNextYear.map((d) => d.toISOString().split("T")[0]).join(", ")}`
+  //   );
+  //   console.log(
+  //     `  ⚠️ Next year penalty: -${nextYearVacationPenalty.toFixed(2)}`
+  //   );
+  // }
 
   while (current <= end) {
     const currentStr = current.toISOString().split("T")[0];
@@ -221,14 +215,12 @@ function calculateScore(
   }
 
   // DEBUG: Check if any remote vacation days were penalized
-  if (penalizedDays.length > 0) {
-    console.log(
-      `  ⚠️ Penalized ${
-        penalizedDays.length
-      } remote vacation days: ${penalizedDays.join(", ")}`
-    );
-    console.log(`  ⚠️ Total penalty: -${remoteVacationPenalty.toFixed(2)}`);
-  }
+  // if (penalizedDays.length > 0) {
+  //   console.log(
+  //     `  ⚠️ Penalized ${penalizedDays.length} remote vacation days: ${penalizedDays.join(", ")}`
+  //   );
+  //   console.log(`  ⚠️ Total penalty: -${remoteVacationPenalty.toFixed(2)}`);
+  // }
 
   const score =
     normalizedEfficiency * EFFICIENCY_WEIGHT +
@@ -337,9 +329,9 @@ function generatePotentialBridgePeriods(
     return !remoteWorkdayDates.has(dayStr);
   });
 
-  console.log(
-    `[Bridge Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
-  );
+  // console.log(
+  //   `[Bridge Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
+  // );
 
   const availableWorkdaysSet = new Set(
     nonRemoteWorkdays.map((d) => d.toISOString().split("T")[0])
@@ -462,9 +454,9 @@ function generatePotentialHolidayLinkPeriods(
     return !remoteWorkdayDates.has(dayStr);
   });
 
-  console.log(
-    `[Holiday Link Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
-  );
+  // console.log(
+  //   `[Holiday Link Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
+  // );
 
   const availableWorkdaysSet = new Set(
     nonRemoteWorkdays.map((d) => d.toISOString().split("T")[0])
@@ -625,9 +617,9 @@ function generatePotentialLongWeekendPeriods(
     return !remoteWorkdayDates.has(dayStr);
   });
 
-  console.log(
-    `[Long Weekend Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
-  );
+  // console.log(
+  //   `[Long Weekend Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
+  // );
 
   const availableWorkdaysSet = new Set(
     nonRemoteWorkdays.map((d) => d.toISOString().split("T")[0])
@@ -873,9 +865,9 @@ function generatePotentialHolidayBridgePeriods(
     nonRemoteWorkdays.map((d) => d.toISOString().split("T")[0])
   );
 
-  console.log(
-    `[Holiday Bridge Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
-  );
+  // console.log(
+  //   `[Holiday Bridge Generator] Filtering remote days: Original workdays: ${availableWorkdays.length}, After filtering: ${nonRemoteWorkdays.length}`
+  // );
 
   // Sort holidays by date
   const sortedHolidays = [...holidays].sort(

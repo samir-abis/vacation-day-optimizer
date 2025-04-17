@@ -613,7 +613,7 @@ export default function VacationPlanner() {
           )}
 
           {/* Initial Settings Group */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label
                 htmlFor="remaining-days"

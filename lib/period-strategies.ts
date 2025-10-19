@@ -17,6 +17,7 @@ const HOLIDAY_INCLUSION_BONUS = 1.5; // Extra points for periods that include a 
 const REMOTE_DAY_INCLUSION_BONUS = 2; // Bonus for each remote day included in the off-period
 const REMOTE_DAY_VACATION_PENALTY = 5; // Penalty for using vacation days on remote workdays
 const NEXT_YEAR_VACATION_PENALTY = 5; // Penalty per vacation day used in the next year
+const MIN_SCORE_THRESHOLD = 20; // Only select periods scoring above this value
 
 // --- Potential Period Interface ---
 export interface PotentialPeriod extends VacationPeriod {
@@ -1186,6 +1187,16 @@ export function findOptimalVacationPeriods(
 
   for (const period of periodsToConsider) {
     if (vacationDaysLeft <= 0) {
+      break;
+    }
+
+    // Skip periods with low scores to avoid wasting vacation days on poor options
+    if (period.score < MIN_SCORE_THRESHOLD) {
+      console.log(
+        `[Optimizer] Stopping selection: remaining periods score below threshold (${MIN_SCORE_THRESHOLD}). Score: ${period.score.toFixed(
+          2
+        )}`
+      );
       break;
     }
 
